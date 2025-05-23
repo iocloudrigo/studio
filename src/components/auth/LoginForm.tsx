@@ -20,11 +20,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail, Lock, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation"; 
 import { useState } from "react";
-
-// Firebase imports
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, type User as FirebaseUser } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
 import { Separator } from "@/components/ui/separator";
+import { doc, getDoc } from "firebase/firestore";
 
 const LoginFormSchema = z.object({
   email: z.string().email({ message: "Indirizzo email non valido." }),
@@ -33,9 +32,15 @@ const LoginFormSchema = z.object({
 
 type LoginFormValues = z.infer<typeof LoginFormSchema>;
 
+async function checkCompanyExists(userId: string): Promise<boolean> {
+  const companyDocRef = doc(db, "aziende", userId);
+  const companyDocSnap = await getDoc(companyDocRef);
+  return companyDocSnap.exists();
+}
+
 export function LoginForm() {
   const { toast } = useToast();
-  const router = useRouter(); // Needed for redirecting to /register for new Google users
+  const router = useRouter();
   const [isEmailLoading, setIsEmailLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
@@ -47,23 +52,28 @@ export function LoginForm() {
     },
   });
 
+  const handleSuccessfulLogin = async (user: FirebaseUser) => {
+    const companyExists = await checkCompanyExists(user.uid);
+    if (companyExists) {
+      router.push('/dashboard');
+    } else {
+      router.push('/registra-azienda');
+    }
+  };
+
   async function onEmailSubmit(data: LoginFormValues) {
     setIsEmailLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, data.email, data.password);
-      // Login successful. AuthRedirectHandler will take over for redirection to dashboard or /register (if company missing).
+      const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
       toast({
         title: "Accesso Riuscito!",
         description: "Verrai reindirizzato a breve.",
       });
-      // Explicitly push to a neutral route to trigger AuthRedirectHandler if not already on a relevant page.
-      // Or rely on AuthRedirectHandler to pick up the change from onAuthStateChanged.
-      // Forcing a navigation might be slightly more robust.
-       router.push('/dashboard'); // AuthRedirectHandler will intercept if needed
+      await handleSuccessfulLogin(userCredential.user);
     } catch (error: any) {
       console.error("Errore di login con email:", error);
       let errorMessage = "Credenziali non valide o utente non trovato. Riprova.";
-      if (error.code) {
+       if (error.code) {
         switch (error.code) {
           case "auth/user-not-found":
           case "auth/wrong-password":
@@ -94,23 +104,21 @@ export function LoginForm() {
     setIsGoogleLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
-      // Login with Google successful. AuthRedirectHandler will take over.
-       toast({
+      const result = await signInWithPopup(auth, provider);
+      toast({
         title: "Accesso Riuscito!",
         description: "Accesso effettuato con Google. Verrai reindirizzato a breve.",
       });
-      // AuthRedirectHandler will determine if user needs to go to /register or /dashboard
-      router.push('/dashboard'); // AuthRedirectHandler will intercept if needed
+      await handleSuccessfulLogin(result.user);
     } catch (error: any) {
       console.error("Errore di login con Google:", error);
       let errorMessage = "Errore durante l'accesso con Google. Riprova.";
       if (error.code === "auth/popup-closed-by-user") {
         errorMessage = "La finestra di accesso Google è stata chiusa. Riprova.";
       } else if (error.code === "auth/cancelled-popup-request") {
-        errorMessage = "Richiesta di accesso Google annullata. Riprova se intendevi accedere.";
+         errorMessage = "Richiesta di accesso Google annullata.";
       } else if (error.code === "auth/account-exists-with-different-credential") {
-        errorMessage = "Un account esiste già con questa email ma con un metodo di accesso diverso. Prova ad accedere con l'altro metodo.";
+        errorMessage = "Un account esiste già con questa email ma con un metodo di accesso diverso.";
       }
       toast({
         title: "Errore Accesso Google",
@@ -123,7 +131,7 @@ export function LoginForm() {
   };
 
   return (
-    <Card className="w-full max-w-md shadow-xl"> {/* Ensure max-w-md from original AuthLayout */}
+    <Card className="w-full max-w-md shadow-xl">
       <CardHeader className="space-y-1 text-center">
         <CardTitle className="text-2xl">Accedi</CardTitle>
         <CardDescription>

@@ -3,17 +3,15 @@
 
 import { useEffect, useState } from 'react';
 import { type User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { AuthLayout } from '@/components/layouts/AuthLayout';
-import { RegisterForm } from '@/components/auth/RegisterForm'; // This will be the comprehensive form
+import { UserCredentialsForm } from '@/components/auth/UserCredentialsForm'; // Changed to UserCredentialsForm
 import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 
-export default function RegisterPage() {
+export default function RegisterUserPage() { // Renamed component for clarity
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -21,19 +19,19 @@ export default function RegisterPage() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setAuthChecked(true);
       if (user) {
-        // User is logged in (e.g., via Google, then redirected here)
-        setCurrentUser(user);
-        // Check if company already exists, if so, redirect to dashboard (AuthRedirectHandler might also do this)
+        // User is already logged in.
+        // Check if company also exists. If so, they shouldn't be on this page.
         const companyDocRef = doc(db, "aziende", user.uid);
         const companyDocSnap = await getDoc(companyDocRef);
         if (companyDocSnap.exists()) {
-          router.replace('/dashboard');
+          router.replace('/dashboard'); // Already registered and has company
         } else {
-          setLoading(false); // Show form to complete company registration
+          // Logged in (e.g. via Google, then navigated here by mistake or old link) but no company.
+          // They should be on /registra-azienda.
+          router.replace('/registra-azienda');
         }
       } else {
-        // No user logged in, show form for new email/password registration
-        setCurrentUser(null);
+        // No user logged in, show form for new email/password user registration.
         setLoading(false);
       }
     });
@@ -53,7 +51,7 @@ export default function RegisterPage() {
 
   return (
     <AuthLayout>
-      <RegisterForm prefilledUser={currentUser} />
+      <UserCredentialsForm />
     </AuthLayout>
   );
 }
