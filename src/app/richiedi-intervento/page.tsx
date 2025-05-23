@@ -13,11 +13,13 @@ async function getCompanyInfoBySlug(slug: string): Promise<{ id_azienda: string;
   }
   try {
     const aziendeRef = collection(db, "aziende");
-    const q = query(aziendeRef, where("slug", "==", slug.trim()), limit(1));
+    // Normalizza lo slug: converti in minuscolo e rimuovi spazi bianchi iniziali/finali
+    const normalizedSlug = slug.toLowerCase().trim();
+    const q = query(aziendeRef, where("slug", "==", normalizedSlug), limit(1));
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
-      console.warn(`Nessuna azienda trovata con slug: ${slug}`);
+      console.warn(`Nessuna azienda trovata con slug normalizzato: ${normalizedSlug} (originale: ${slug})`);
       return null;
     }
     const companyDoc = querySnapshot.docs[0];
