@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -32,6 +33,7 @@ import { Button } from "../ui/button";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { Card, CardContent } from "@/components/ui/card"; // Added import
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
