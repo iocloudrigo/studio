@@ -5,13 +5,14 @@ import { useEffect, useState } from 'react';
 import { type User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { AuthLayout } from '@/components/layouts/AuthLayout';
-import { UserCredentialsForm } from '@/components/auth/UserCredentialsForm'; // Changed to UserCredentialsForm
+import { UnifiedRegisterForm } from '@/components/auth/UnifiedRegisterForm';
 import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { doc, getDoc } from 'firebase/firestore';
 
-export default function RegisterUserPage() { // Renamed component for clarity
+export default function RegisterPage() {
   const router = useRouter();
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -19,19 +20,22 @@ export default function RegisterUserPage() { // Renamed component for clarity
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setAuthChecked(true);
       if (user) {
-        // User is already logged in.
-        // Check if company also exists. If so, they shouldn't be on this page.
+        setCurrentUser(user);
+        // User is logged in. Check if company already exists.
+        // If company exists, they shouldn't be on this page (AuthRedirectHandler should manage this for other routes).
+        // If they land here directly and company exists, redirect to dashboard.
         const companyDocRef = doc(db, "aziende", user.uid);
         const companyDocSnap = await getDoc(companyDocRef);
         if (companyDocSnap.exists()) {
-          router.replace('/dashboard'); // Already registered and has company
+          router.replace('/dashboard');
         } else {
-          // Logged in (e.g. via Google, then navigated here by mistake or old link) but no company.
-          // They should be on /registra-azienda.
-          router.replace('/registra-azienda');
+          // No company profile found, allow to complete registration.
+          // The form will use currentUser to prefill email.
+          setLoading(false);
         }
       } else {
-        // No user logged in, show form for new email/password user registration.
+        // No user logged in, show form for new full registration.
+        setCurrentUser(null);
         setLoading(false);
       }
     });
@@ -51,7 +55,7 @@ export default function RegisterUserPage() { // Renamed component for clarity
 
   return (
     <AuthLayout>
-      <UserCredentialsForm />
+      <UnifiedRegisterForm currentUser={currentUser} />
     </AuthLayout>
   );
 }

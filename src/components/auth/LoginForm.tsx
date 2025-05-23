@@ -55,9 +55,9 @@ export function LoginForm() {
   const handleSuccessfulLogin = async (user: FirebaseUser) => {
     const companyExists = await checkCompanyExists(user.uid);
     if (companyExists) {
-      router.push('/dashboard');
+      router.push('/dashboard'); // AuthRedirectHandler will also catch this
     } else {
-      router.push('/registra-azienda');
+      router.push('/register'); // Redirect to the unified registration form
     }
   };
 
@@ -69,6 +69,8 @@ export function LoginForm() {
         title: "Accesso Riuscito!",
         description: "Verrai reindirizzato a breve.",
       });
+      // AuthRedirectHandler will pick up the auth state change and redirect appropriately.
+      // Forcing a navigation here helps ensure it triggers if already on '/'.
       await handleSuccessfulLogin(userCredential.user);
     } catch (error: any) {
       console.error("Errore di login con email:", error);
