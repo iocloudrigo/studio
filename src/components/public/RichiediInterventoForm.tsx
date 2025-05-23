@@ -12,6 +12,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,30 +26,31 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { Loader2, Send } from "lucide-react";
-import { db } from "@/lib/firebase";
+import { Loader2, User, Phone, MapPin, CalendarDays, Clock, Tool, StickyNote } from "lucide-react";
+
+// Firebase imports
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 const giorniSettimana = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì"] as const;
 const fasceOrarie = ["Mattina (9-13)", "Pomeriggio (14-18)", "Sera (18-21)"] as const;
 
-
-const RichiediInterventoFormSchema = z.object({
-  nomeCognome: z.string().min(3, { message: "Nome e Cognome sono obbligatori (min. 3 caratteri)." }),
-  telefono: z.string().min(9, { message: "Il numero di telefono è obbligatorio (min. 9 cifre)." }),
-  indirizzo: z.string().min(5, { message: "L'indirizzo dell'intervento è obbligatorio (min. 5 caratteri)." }),
+const richiediInterventoSchema = z.object({
+  nomeCognome: z.string().min(3, { message: "Nome e cognome sono obbligatori." }),
+  telefono: z.string().min(1, { message: "Il numero di telefono è obbligatorio." }),
+  indirizzo: z.string().min(5, { message: "L'indirizzo dell'intervento è obbligatorio." }),
   giornoPreferito: z.enum(giorniSettimana, {
-    required_error: "Seleziona un giorno preferito.",
+    errorMap: () => ({ message: "Seleziona un giorno preferito." }),
   }),
   fasciaOraria: z.enum(fasceOrarie, {
-    required_error: "Seleziona una fascia oraria.",
+    errorMap: () => ({ message: "Seleziona una fascia oraria." }),
   }),
-  tipoServizio: z.string().min(3, { message: "Il tipo di servizio è obbligatorio (min. 3 caratteri)." }),
+  tipoServizio: z.string().min(3, { message: "Specifica il tipo di servizio richiesto." }),
   noteAggiuntive: z.string().optional(),
-  id_azienda: z.string().min(1, { message: "ID Azienda non valido." }), // Hidden, but should be present
+  id_azienda: z.string().min(1), // Hidden field, should always have a value
 });
 
-type RichiediInterventoFormValues = z.infer<typeof RichiediInterventoFormSchema>;
+type RichiediInterventoFormValues = z.infer<typeof richiediInterventoSchema>;
 
 interface RichiediInterventoFormProps {
   id_azienda: string;
@@ -58,67 +60,41 @@ interface RichiediInterventoFormProps {
 export function RichiediInterventoForm({ id_azienda, companyDisplayName }: RichiediInterventoFormProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
 
   const form = useForm<RichiediInterventoFormValues>({
-    resolver: zodResolver(RichiediInterventoFormSchema),
+    resolver: zodResolver(richiediInterventoSchema),
     defaultValues: {
       nomeCognome: "",
       telefono: "",
       indirizzo: "",
-      tipoServizio: "",
-      noteAggiuntive: "",
-      id_azienda: id_azienda, // Pre-fill hidden field
       giornoPreferito: undefined,
       fasciaOraria: undefined,
+      tipoServizio: "",
+      noteAggiuntive: "",
+      id_azienda: id_azienda,
     },
   });
-  
-  // Update default id_azienda if prop changes
-  if (form.getValues("id_azienda") !== id_azienda) {
-    form.reset({ ...form.getValues(), id_azienda: id_azienda });
-  }
-
 
   async function onSubmit(data: RichiediInterventoFormValues) {
     setIsLoading(true);
     try {
       await addDoc(collection(db, "richieste_clienti"), {
-        nome_cliente: data.nomeCognome,
-        telefono_cliente: data.telefono,
-        indirizzo_intervento: data.indirizzo,
-        giorno_preferito: data.giornoPreferito,
-        fascia_oraria_preferita: data.fasciaOraria,
-        tipo_servizio_richiesto: data.tipoServizio,
-        note_aggiuntive: data.noteAggiuntive || "",
-        id_azienda: data.id_azienda,
-        stato: "in attesa", // "in attesa" as per requirements
+        ...data,
+        status: "in attesa", // 'status' was 'stato' in the brief, using 'status' for consistency with dashboard
         created_at: serverTimestamp(),
-        company_slug_at_request: companyDisplayName, // Store for reference
       });
-
       toast({
         title: "Richiesta Inviata!",
-        description: "La tua richiesta di intervento è stata inviata con successo. Verrai ricontattato al più presto.",
+        description: "La tua richiesta è stata inviata con successo. Verrai ricontattato al più presto.",
       });
-      form.reset();
-      // Reset select fields explicitly if needed, or ensure defaultValues clears them.
-      // For react-hook-form with ShadCN Select, sometimes a manual reset or key change is cleaner.
-      form.reset({
-        nomeCognome: "",
-        telefono: "",
-        indirizzo: "",
-        tipoServizio: "",
-        noteAggiuntive: "",
-        id_azienda: id_azienda, 
-        giornoPreferito: undefined,
-        fasciaOraria: undefined,
-      });
-
+      setIsSubmitted(true);
+      form.reset(); // Optionally reset form, or hide it
     } catch (error) {
       console.error("Errore nell'invio della richiesta:", error);
       toast({
         title: "Errore Invio Richiesta",
-        description: "Si è verificato un errore durante l'invio della tua richiesta. Riprova più tardi o contatta l'assistenza.",
+        description: "Si è verificato un problema durante l'invio della tua richiesta. Riprova più tardi.",
         variant: "destructive",
       });
     } finally {
@@ -126,13 +102,25 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
     }
   }
 
+  if (isSubmitted) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto shadow-lg">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl text-primary">Richiesta Inviata Correttamente!</CardTitle>
+        </CardHeader>
+        <CardContent className="text-center">
+          <p className="text-lg text-muted-foreground">Grazie per averci contattato.</p>
+          <p className="text-muted-foreground">Verrai ricontattato al più presto da {companyDisplayName} per confermare i dettagli.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
-    <Card className="w-full max-w-2xl mx-auto shadow-xl border-primary/20">
+    <Card className="w-full max-w-2xl mx-auto shadow-lg">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl md:text-3xl text-primary">Modulo Richiesta Intervento</CardTitle>
-        <CardDescription className="text-md">
-          Compila i campi sottostanti per inviare la tua richiesta a <span className="font-semibold text-accent">{companyDisplayName}</span>.
-        </CardDescription>
+        <CardTitle className="text-2xl">Richiedi un Intervento a {companyDisplayName}</CardTitle>
+        <CardDescription>Compila i campi sottostanti per inviare la tua richiesta a {companyDisplayName}.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -140,44 +128,42 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
             <FormField
               control={form.control}
               name="id_azienda"
+              render={({ field }) => <Input type="hidden" {...field} />}
+            />
+
+            <FormField
+              control={form.control}
+              name="nomeCognome"
               render={({ field }) => (
                 <FormItem>
+                  <FormLabel>Nome e Cognome</FormLabel>
                   <FormControl>
-                    <Input type="hidden" {...field} />
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input placeholder="Es. Mario Rossi" {...field} className="pl-10" disabled={isLoading} />
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="nomeCognome"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nome e Cognome</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Es. Mario Rossi" {...field} disabled={isLoading} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="telefono"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Numero di Telefono</FormLabel>
-                    <FormControl>
-                      <Input type="tel" placeholder="Es. 3331234567" {...field} disabled={isLoading} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            <FormField
+              control={form.control}
+              name="telefono"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Numero di Telefono</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input type="tel" placeholder="Es. 3331234567" {...field} className="pl-10" disabled={isLoading} />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
@@ -186,7 +172,10 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 <FormItem>
                   <FormLabel>Indirizzo dell'Intervento</FormLabel>
                   <FormControl>
-                    <Input placeholder="Es. Via Roma 1, 20121 Milano MI" {...field} disabled={isLoading} />
+                    <div className="relative">
+                      <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input placeholder="Es. Via Roma 1, 00100 Città" {...field} className="pl-10" disabled={isLoading} />
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -202,9 +191,12 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                     <FormLabel>Giorno Preferito</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleziona un giorno" />
-                        </SelectTrigger>
+                        <div className="relative">
+                           <CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                           <SelectTrigger className="pl-10">
+                            <SelectValue placeholder="Seleziona un giorno" />
+                          </SelectTrigger>
+                        </div>
                       </FormControl>
                       <SelectContent>
                         {giorniSettimana.map(giorno => (
@@ -216,17 +208,21 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                   </FormItem>
                 )}
               />
+
               <FormField
                 control={form.control}
                 name="fasciaOraria"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Fascia Oraria Preferita</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                     <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleziona una fascia oraria" />
-                        </SelectTrigger>
+                        <div className="relative">
+                           <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                           <SelectTrigger className="pl-10">
+                            <SelectValue placeholder="Seleziona fascia oraria" />
+                          </SelectTrigger>
+                        </div>
                       </FormControl>
                       <SelectContent>
                         {fasceOrarie.map(fascia => (
@@ -247,8 +243,14 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 <FormItem>
                   <FormLabel>Tipo di Servizio Richiesto</FormLabel>
                   <FormControl>
-                    <Input placeholder="Es. Riparazione perdita, Installazione caldaia, ecc." {...field} disabled={isLoading} />
+                     <div className="relative">
+                        <Tool className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input placeholder="Es. Riparazione perdita, Installazione condizionatore" {...field} className="pl-10" disabled={isLoading} />
+                     </div>
                   </FormControl>
+                  <FormDescription>
+                    Descrivi brevemente il servizio di cui hai bisogno.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -261,25 +263,29 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 <FormItem>
                   <FormLabel>Note Aggiuntive (Facoltativo)</FormLabel>
                   <FormControl>
-                    <Textarea
-                      placeholder="Fornisci dettagli aggiuntivi utili per l'intervento."
-                      className="resize-none"
-                      {...field}
-                      disabled={isLoading}
-                    />
+                    <div className="relative">
+                      <StickyNote className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Textarea
+                        placeholder="Fornisci ulteriori dettagli utili per l'intervento..."
+                        className="resize-none pl-10"
+                        {...field}
+                        disabled={isLoading}
+                      />
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground text-lg py-6" disabled={isLoading}>
+            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isLoading}>
               {isLoading ? (
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Invio in corso...
+                </>
               ) : (
-                <Send className="mr-2 h-5 w-5" />
+                "Invia Richiesta"
               )}
-              Invia Richiesta
             </Button>
           </form>
         </Form>

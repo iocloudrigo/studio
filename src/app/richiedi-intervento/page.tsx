@@ -3,7 +3,7 @@ import { PublicLayout } from "@/components/layouts/PublicLayout";
 import { RichiediInterventoForm } from "@/components/public/RichiediInterventoForm";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, limit } from "firebase/firestore";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Removed CardDescription as it's not used here
 import { AlertTriangle } from "lucide-react";
 
 async function getCompanyInfoBySlug(slug: string): Promise<{ id_azienda: string; nome_azienda: string } | null> {
@@ -13,7 +13,6 @@ async function getCompanyInfoBySlug(slug: string): Promise<{ id_azienda: string;
   }
   try {
     const aziendeRef = collection(db, "aziende");
-    // Normalizza lo slug: converti in minuscolo e rimuovi spazi bianchi iniziali/finali
     const normalizedSlug = slug.toLowerCase().trim();
     const q = query(aziendeRef, where("slug", "==", normalizedSlug), limit(1));
     const querySnapshot = await getDocs(q);
@@ -23,9 +22,21 @@ async function getCompanyInfoBySlug(slug: string): Promise<{ id_azienda: string;
       return null;
     }
     const companyDoc = querySnapshot.docs[0];
+    const companyData = companyDoc.data();
+    
+    let displayName: string;
+    const fetchedCompanyName = companyData.nome;
+
+    if (typeof fetchedCompanyName === 'string' && fetchedCompanyName.trim() !== '') {
+      displayName = fetchedCompanyName;
+    } else {
+      // Fallback if 'nome' is missing, empty, or not a string in the found document
+      displayName = `Azienda (slug: ${normalizedSlug})`;
+    }
+
     return {
-      id_azienda: companyDoc.id, // L'ID del documento è uid_admin, che usiamo come id_azienda
-      nome_azienda: companyDoc.data().nome || "Azienda Cliente",
+      id_azienda: companyDoc.id, 
+      nome_azienda: displayName,
     };
   } catch (error) {
     console.error("Errore nel recuperare l'azienda dallo slug:", error);
