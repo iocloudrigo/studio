@@ -33,7 +33,7 @@ import { Button } from "../ui/button";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
-import { Card, CardContent } from "@/components/ui/card"; // Added import
+import { Card, CardContent } from "@/components/ui/card";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -53,7 +53,7 @@ const navItems = [
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { open, state: sidebarState } = useSidebar();
+  const { state: sidebarState } = useSidebar(); // Removed 'open' as it's not directly used here for logic, defaultOpen is handled by Provider
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
 
   const toggleSubmenu = (label: string) => {
@@ -61,7 +61,7 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar" defaultOpen={true}>
+    <Sidebar collapsible="icon" variant="sidebar"> {/* Removed defaultOpen={true} */}
       <SidebarHeader className="border-b">
         {/* Show full logo when expanded, icon/smaller when collapsed */}
         {sidebarState === "expanded" ? (
