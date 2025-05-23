@@ -36,7 +36,6 @@ const generateSlug = (name: string): string => {
     .replace(/--+/g, '-'); 
 };
 
-// Base schema for company details, used by both schemas below
 const unifiedRegisterFormSchemaBase = {
   companyName: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
   slug: z.string()
@@ -44,11 +43,10 @@ const unifiedRegisterFormSchemaBase = {
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: "Slug non valido. Usa solo lettere minuscole, numeri e trattini singoli." })
     .refine(s => !s.startsWith('-') && !s.endsWith('-'), { message: "Lo slug non può iniziare o finire con un trattino." }),
   companyPhone: z.string().optional(),
-  activitySector: z.string().optional(),
+  activitySector: z.string().optional(), // No longer .min(1) to allow "Non specificato" which has value ""
   companyCity: z.string().optional(),
 };
 
-// Schema for new user registration (email, password + company details)
 const UnifiedRegisterFormSchemaNewUser = z.object({
   email: z.string().email({ message: "Indirizzo email non valido." }),
   password: z.string().min(6, { message: "La password deve contenere almeno 6 caratteri." }),
@@ -59,14 +57,12 @@ const UnifiedRegisterFormSchemaNewUser = z.object({
   path: ["confirmPassword"],
 });
 
-// Schema for existing user completing company profile (e.g., after Google sign-in)
 const UnifiedRegisterFormSchemaExistingUser = z.object({
-  email: z.string().email(), // Will be prefilled and readonly
+  email: z.string().email(), 
   ...unifiedRegisterFormSchemaBase,
 });
 
-
-type UnifiedRegisterFormValues = z.infer<typeof UnifiedRegisterFormSchemaNewUser>; // Use the more comprehensive type
+type UnifiedRegisterFormValues = z.infer<typeof UnifiedRegisterFormSchemaNewUser>;
 
 interface UnifiedRegisterFormProps {
   currentUser: FirebaseUser | null;
@@ -96,7 +92,7 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
       companyName: "",
       slug: "",
       companyPhone: "",
-      activitySector: "unspecified",
+      activitySector: "unspecified", // Default to "unspecified"
       companyCity: "",
     },
   });
@@ -123,118 +119,89 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
     console.log("UnifiedRegisterForm onSubmit triggered. Data:", data);
     setIsLoading(true);
 
-    let userIdToUse: string;
-    let userEmailToUse: string;
-
-    if (currentUser) {
-      console.log("Completing profile for existing user:", currentUser.uid);
-      userIdToUse = currentUser.uid;
-      userEmailToUse = currentUser.email || data.email; // Fallback, though email should be from currentUser
-    } else {
-      // New user registration with email/password
-      console.log("Attempting new user registration with email:", data.email);
-      if (!data.password) { // Should be caught by Zod, but defensive check
-        form.setError("password", {type: "manual", message: "La password è richiesta."});
-        setIsLoading(false);
-        console.error("Password field is empty for new user registration.");
-        return;
-      }
-      try {
-        const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-        userIdToUse = userCredential.user.uid;
-        userEmailToUse = userCredential.user.email!; // Email from created user is most reliable
-        console.log("New user created successfully:", userIdToUse);
-      } catch (error: any) {
-        console.error("Errore creazione utente Firebase Auth:", error);
-        let errorMessage = "Errore durante la creazione dell'utente. Riprova.";
-        if (error.code === "auth/email-already-in-use") {
-          errorMessage = "L'indirizzo email è già in uso.";
-        } else if (error.code === "auth/weak-password") {
-          errorMessage = "La password è troppo debole.";
-        } else if (error.code === "auth/invalid-email") {
-          errorMessage = "L'indirizzo email non è valido.";
-        }
-        toast({ title: "Errore Registrazione Utente", description: errorMessage, variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-    }
-    
-    console.log("User ID for Firestore:", userIdToUse, "User Email:", userEmailToUse);
-
-    const finalSlug = generateSlug(data.slug); // Normalize the slug from form input
-    console.log("Normalized slug for processing:", finalSlug);
-    if (finalSlug !== data.slug) {
-        form.setValue("slug", finalSlug, { shouldValidate: true }); // Update form if different
-    }
-
-    // Validate the normalized slug again with the schema
-    const currentSchema = currentUser ? UnifiedRegisterFormSchemaExistingUser : UnifiedRegisterFormSchemaNewUser;
-    const slugValidationResult = currentSchema.shape.slug.safeParse(finalSlug);
-
-    if (!slugValidationResult.success) {
-        console.error("Slug validation failed after normalization:", slugValidationResult.error.toString());
-        form.setError("slug", { type: "manual", message: slugValidationResult.error.errors[0]?.message || "Slug non valido dopo la normalizzazione." });
-        setIsLoading(false);
-        return;
-    }
-    console.log("Slug format validated successfully after normalization.");
+    let userIdToUse: string | undefined = undefined;
+    let userEmailToUse: string | undefined = undefined;
 
     try {
-      // Check slug uniqueness
-      const aziendeRef = collection(db, "aziende");
-      const q = query(aziendeRef, where("slug", "==", finalSlug));
-      console.log("Querying Firestore for slug uniqueness:", finalSlug);
-      const querySnapshot = await getDocs(q);
-      
-      let isSlugTaken = false;
-      if (!querySnapshot.empty) {
-        querySnapshot.forEach((docSnap) => {
-          // A slug is taken if it exists AND the document ID is NOT the current user's ID.
-          // This handles cases where a user might be re-attempting registration after partial failure
-          // or if there's a unique constraint on slug across all companies.
-          // For a brand new company for this userIdToUse, any existing slug is a conflict.
-          if (docSnap.id !== userIdToUse) { // If slug exists under a DIFFERENT company
-            isSlugTaken = true;
-          }
-        });
+      if (currentUser) {
+        console.log("Completing profile for existing user:", currentUser.uid);
+        userIdToUse = currentUser.uid;
+        userEmailToUse = currentUser.email || data.email; 
+      } else {
+        console.log("Attempting new user registration with email:", data.email);
+        if (!data.password) {
+          form.setError("password", {type: "manual", message: "La password è richiesta."});
+          setIsLoading(false);
+          console.error("Password field is empty for new user registration.");
+          toast({ title: "Errore Registrazione", description: "La password è richiesta.", variant: "destructive" });
+          return;
+        }
+        try {
+          const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+          userIdToUse = userCredential.user.uid;
+          userEmailToUse = userCredential.user.email!;
+          console.log("New user created successfully with Firebase Auth:", userIdToUse);
+        } catch (authError: any) {
+          console.error("Errore creazione utente Firebase Auth:", authError);
+          let errorMessage = "Errore durante la creazione dell'utente. Riprova.";
+          if (authError.code === "auth/email-already-in-use") errorMessage = "L'indirizzo email è già in uso.";
+          else if (authError.code === "auth/weak-password") errorMessage = "La password è troppo debole.";
+          else if (authError.code === "auth/invalid-email") errorMessage = "L'indirizzo email non è valido.";
+          else errorMessage = `Errore Auth: ${authError.message}`;
+          toast({ title: "Errore Registrazione Utente", description: errorMessage, variant: "destructive" });
+          setIsLoading(false);
+          return;
+        }
       }
       
-      // If we are creating a new company profile for userIdToUse,
-      // and the slug is found in the querySnapshot, and it's NOT under this userIdToUse, then it's taken.
-      // If querySnapshot is not empty AND the found doc's ID is NOT userIdToUse, it's a conflict.
-      // If querySnapshot is not empty AND the found doc's ID IS userIdToUse, it means this user *already has this company registered*
-      // in which case AuthRedirectHandler should have prevented them from reaching this form in this state.
-      // So, for a clean registration, if querySnapshot is not empty, it's a problem.
-      
-      if (!querySnapshot.empty) {
-          // Check if the slug belongs to a DIFFERENT user.
-          const conflictingDoc = querySnapshot.docs.find(doc => doc.id !== userIdToUse);
-          if (conflictingDoc) {
-            isSlugTaken = true;
-            console.warn("Slug is taken by another company. Firestore doc ID:", conflictingDoc.id);
-          } else {
-             // Slug belongs to the current user, this implies company already exists.
-             // AuthRedirectHandler should ideally prevent this state.
-             // For robustness, one might redirect or show error.
-             // For now, we treat it as if the slug is effectively "taken" for this new registration flow.
-             console.warn("Slug found, but it seems to belong to the current user. This state should ideally be handled by AuthRedirectHandler.");
-             // Let's assume for this specific form, any existing slug is an issue unless it's an update flow (which this isn't)
-             isSlugTaken = true; 
-          }
-      }
-
-
-      if (isSlugTaken) {
-        form.setError("slug", { type: "manual", message: "Questo slug è già utilizzato da un'altra azienda. Scegline uno diverso." });
+      if (!userIdToUse || !userEmailToUse) {
+        console.error("User ID or Email is undefined after auth step.");
+        toast({ title: "Errore Interno", description: "Impossibile ottenere i dati utente.", variant: "destructive" });
         setIsLoading(false);
-        console.error("Slug conflict detected.");
         return;
       }
-      console.log("Slug is unique.");
+      console.log("User ID for Firestore:", userIdToUse, "User Email:", userEmailToUse);
 
-      // Create company document in Firestore
-      const companyDocRef = doc(db, "aziende", userIdToUse); // Use user's UID as company document ID
+      const finalSlug = generateSlug(data.slug);
+      console.log("Normalized slug for processing:", finalSlug);
+      if (finalSlug !== data.slug) {
+          form.setValue("slug", finalSlug, { shouldValidate: true });
+      }
+
+      const currentSchema = currentUser ? UnifiedRegisterFormSchemaExistingUser : UnifiedRegisterFormSchemaNewUser;
+      const validationResult = currentSchema.safeParse({...data, slug: finalSlug}); // Validate with the normalized slug
+
+      if (!validationResult.success) {
+          console.error("Form validation failed after slug normalization:", validationResult.error.flatten().fieldErrors);
+          const fieldErrors = validationResult.error.flatten().fieldErrors;
+          // Set errors for each field
+          (Object.keys(fieldErrors) as Array<keyof typeof fieldErrors>).forEach((key) => {
+            const messages = fieldErrors[key];
+            if (messages && messages.length > 0) {
+              form.setError(key as any, { type: "manual", message: messages.join(", ") });
+            }
+          });
+          toast({ title: "Errore di Validazione", description: "Controlla i campi evidenziati.", variant: "destructive" });
+          setIsLoading(false);
+          return;
+      }
+      console.log("Form data validated successfully after slug normalization.");
+
+
+      console.log("Querying Firestore for slug uniqueness:", finalSlug);
+      const aziendeRef = collection(db, "aziende");
+      const q = query(aziendeRef, where("slug", "==", finalSlug), where("uid_admin", "!=", userIdToUse)); // Check slug not taken by OTHERS
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        console.warn("Slug conflict detected. Slug:", finalSlug, "is taken by another company.");
+        form.setError("slug", { type: "manual", message: "Questo slug è già utilizzato da un'altra azienda. Scegline uno diverso." });
+        toast({ title: "Errore Registrazione", description: "Lo slug scelto è già in uso.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
+      console.log("Slug is unique or belongs to the current user (which is fine for update, but this is create).");
+
       const companyDataToSave = {
         uid_admin: userIdToUse,
         email_admin: userEmailToUse,
@@ -247,6 +214,7 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
       };
 
       console.log("Attempting to save company data to Firestore:", companyDataToSave);
+      const companyDocRef = doc(db, "aziende", userIdToUse);
       await setDoc(companyDocRef, companyDataToSave);
       console.log("Company data saved successfully to Firestore for document ID:", userIdToUse);
 
@@ -258,16 +226,19 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
       console.log("Redirecting to /dashboard.");
 
     } catch (error: any) {
-      console.error("Errore durante la verifica dello slug o salvataggio dati azienda in Firestore:", error);
+      console.error("Errore generico in onSubmit:", error);
       toast({
         title: "Errore Registrazione Azienda",
-        description: `Si è verificato un errore: ${error.message || "Controlla i permessi di Firestore o i dati inseriti."}`,
+        description: `Si è verificato un errore imprevisto: ${error.message || "Riprova più tardi."}`,
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
-      console.log("onSubmit finished. isLoading set to false.");
-    }
+      setIsLoading(false); // Ensure isLoading is set to false even on unexpected errors
+    } 
+    // Removed finally block as setIsLoading(false) is handled in all caught paths and after success before redirect.
+    // If router.push happens before setIsLoading(false), the state update might be lost on unmount.
+    // So, if not redirecting due to error, isLoading must be set to false.
+    // If redirecting on success, it's fine if isLoading is still true during unmount.
+    // The current structure sets isLoading to false on errors.
   };
 
   return (
@@ -374,21 +345,21 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
                         {...field}
                         className="pl-10"
                         disabled={isLoading}
-                        onBlur={(e) => { // Normalize on blur if manually edited
+                        onBlur={(e) => { 
                             const manualSlug = generateSlug(e.target.value);
                             if (e.target.value !== manualSlug) {
-                                field.onChange(manualSlug);
+                                field.onChange(manualSlug); // Update form with normalized slug
+                                form.trigger("slug"); // Re-validate the slug field
                             }
-                            setIsSlugManuallyEdited(true); // Mark as edited once user interacts
-                            field.onBlur(); // Call original onBlur
+                            setIsSlugManuallyEdited(true); 
+                            field.onBlur(); 
                         }}
                         onChange={(e) => {
-                            field.onChange(e.target.value); // Allow typing freely
-                            // Consider setting isSlugManuallyEdited to true on first change if not auto-generated
+                            field.onChange(e.target.value); 
                             if (!isSlugManuallyEdited && e.target.value !== generateSlug(companyNameValue) ) {
                                 setIsSlugManuallyEdited(true);
                             }
-                             form.clearErrors('slug'); // Clear errors on change
+                             form.clearErrors('slug');
                         }}
                       />
                     </div>
@@ -429,7 +400,7 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
                   <FormLabel>Settore Attività <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
                   <Select 
                     onValueChange={field.onChange} 
-                    value={field.value || "unspecified"} 
+                    value={field.value || "unspecified"} // Ensure a valid value is always passed
                     disabled={isLoading}
                   >
                     <FormControl>
