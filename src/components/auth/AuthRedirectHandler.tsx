@@ -31,8 +31,8 @@ export function AuthRedirectHandler({ children }: { children: React.ReactNode })
 
         if (pathname === LOGIN_ROUTE) {
           // User is authenticated and on the login page.
-          // DO NOTHING. Let them explicitly try to login again or navigate elsewhere.
-          // LoginForm will handle redirection upon successful re-login.
+          // Let LoginForm handle redirection upon successful re-login or user can navigate.
+          // If they are here with an active session, LoginForm will guide them.
         } else if (pathname === REGISTER_ROUTE) {
           // User is authenticated and on the unified registration page.
           if (companyExists) {
@@ -61,14 +61,14 @@ export function AuthRedirectHandler({ children }: { children: React.ReactNode })
         }
       } else {
         // User is NOT authenticated
-        // If trying to access a protected route, redirect to login.
-        const isProtectedRoute = pathname.startsWith(DASHBOARD_BASE_ROUTE) ||
-                               pathname === REGISTER_ROUTE; // Access to /register is for unauthenticated or those completing company profile
+        // If trying to access a protected route (dashboard), redirect to login.
+        // /register is NOT a protected route for unauthenticated users.
+        const isProtectedRoute = pathname.startsWith(DASHBOARD_BASE_ROUTE);
 
         if (isProtectedRoute) {
            router.replace(LOGIN_ROUTE);
         }
-        // Unauthenticated users can freely access LOGIN_ROUTE and public pages.
+        // Unauthenticated users can freely access LOGIN_ROUTE, REGISTER_ROUTE and public pages.
       }
       setIsLoading(false);
     });
@@ -86,3 +86,4 @@ export function AuthRedirectHandler({ children }: { children: React.ReactNode })
 
   return <>{children}</>;
 }
+
