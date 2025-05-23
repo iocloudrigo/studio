@@ -22,31 +22,17 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 // Firebase imports
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, User } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore"; // Removed setDoc, serverTimestamp as company creation moved
 import { auth, db } from "@/lib/firebase";
 import { Separator } from "@/components/ui/separator";
 
 const LoginFormSchema = z.object({
   email: z.string().email({ message: "Indirizzo email non valido." }),
-  password: z.string().min(1, { message: "La password è richiesta." }), // Min 1 char to trigger required error if empty
+  password: z.string().min(1, { message: "La password è richiesta." }),
 });
 
 type LoginFormValues = z.infer<typeof LoginFormSchema>;
-
-// Slug generation utility for Google Sign-In
-const generateSlugFromEmail = (email: string): string => {
-  const emailParts = email.split('@');
-  if (emailParts.length > 0) {
-    return emailParts[0]
-      .toLowerCase()
-      .trim()
-      .replace(/[^\w-]+/g, '') 
-      .replace(/--+/g, '-');
-  }
-  return `utente-${Date.now()}`; // Fallback slug
-};
-
 
 export function LoginForm() {
   const { toast } = useToast();
@@ -78,7 +64,7 @@ export function LoginForm() {
         switch (error.code) {
           case "auth/user-not-found":
           case "auth/wrong-password":
-          case "auth/invalid-credential": // General invalid credential error for newer SDKs
+          case "auth/invalid-credential":
             errorMessage = "Email o password errati. Controlla e riprova.";
             break;
           case "auth/invalid-email":
@@ -109,32 +95,24 @@ export function LoginForm() {
       const user = userCredential.user;
 
       if (user) {
-        // Check if company document already exists for this user
         const companyDocRef = doc(db, "aziende", user.uid);
         const companyDocSnap = await getDoc(companyDocRef);
 
-        if (!companyDocSnap.exists()) {
-          // User is new, create company document
-          const companySlug = generateSlugFromEmail(user.email || `utente-${user.uid}`);
-          await setDoc(companyDocRef, {
-            nome: "Nuova Azienda", // Default name for Google Sign-Up
-            slug: companySlug,
-            email_admin: user.email,
-            uid_admin: user.uid,
-            data_creazione: serverTimestamp(),
-            metodo_registrazione: "google", // Optional: track registration method
-          });
-          toast({
-            title: "Registrazione e Accesso Completati!",
-            description: "Account creato e accesso effettuato con Google. Verrai reindirizzato.",
-          });
-        } else {
+        if (companyDocSnap.exists()) {
+          // Company document exists, user is already registered
           toast({
             title: "Accesso Riuscito!",
             description: "Accesso effettuato con Google. Verrai reindirizzato.",
           });
+          router.push('/dashboard');
+        } else {
+          // Company document does NOT exist, user is new or needs to complete company registration
+          toast({
+            title: "Accesso Riuscito!",
+            description: "Completa la registrazione della tua azienda.",
+          });
+          router.push('/registra-azienda'); // Redirect to new company registration page
         }
-        router.push('/dashboard');
       }
     } catch (error: any) {
       console.error("Errore di login con Google:", error);
@@ -155,7 +133,6 @@ export function LoginForm() {
       setIsGoogleLoading(false);
     }
   };
-
 
   return (
     <Card className="w-full shadow-xl">
@@ -240,7 +217,7 @@ export function LoginForm() {
             Non hai un account?{' '}
             <Button variant="link" asChild className="text-accent p-0 h-auto">
               <Link href="/register">
-                Registrati
+                Registrati (Email)
               </Link>
             </Button>
           </p>
