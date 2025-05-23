@@ -33,16 +33,23 @@ const LoginFormSchema = z.object({
 type LoginFormValues = z.infer<typeof LoginFormSchema>;
 
 async function checkCompanyExists(userId: string): Promise<boolean> {
+  console.log("checkCompanyExists called for userId:", userId);
+  if (!userId) {
+    console.error("checkCompanyExists: userId is undefined or null");
+    return false;
+  }
   const companyDocRef = doc(db, "aziende", userId);
   const companyDocSnap = await getDoc(companyDocRef);
-  return companyDocSnap.exists();
+  const exists = companyDocSnap.exists();
+  console.log(`Company for ${userId} exists: ${exists}`);
+  return exists;
 }
 
 export function LoginForm() {
   const { toast } = useToast();
   const router = useRouter();
   const [isEmailLoading, setIsEmailLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false); // Used for Google redirect flow
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(LoginFormSchema),
@@ -54,37 +61,55 @@ export function LoginForm() {
 
   // Effect to handle Google redirect result
   useEffect(() => {
-    const handleAsyncRedirect = async () => {
-      // Only attempt to get redirect result if not already processing email login
-      // and if not explicitly in google loading state from button click (though page reloads)
-      if (isEmailLoading) return;
-
+    const processRedirectResult = async () => {
+      // Only process if not already handling an email login
+      if (isEmailLoading) {
+        console.log("LoginForm useEffect: Email login in progress, skipping getRedirectResult.");
+        return;
+      }
+      
+      console.log("LoginForm useEffect: Attempting getRedirectResult...");
       try {
-        // Check if we are in the process of a Google redirect.
-        // isGoogleLoading might be false on page load after redirect.
-        // getRedirectResult itself will determine if a redirect operation was pending.
+        // Set loading true here to indicate we are actively checking for a redirect result.
+        // This might briefly show a loader if the user lands on the page after a redirect.
+        // We will set it false in the finally block.
+        // setIsGoogleLoading(true); // Let's be more specific about when this is true
+
         const result = await getRedirectResult(auth);
+        console.log("LoginForm useEffect: getRedirectResult result:", result);
+
         if (result && result.user) {
-          setIsGoogleLoading(true); // Set loading true as we process the user
+          setIsGoogleLoading(true); // Now we are actively processing a successful Google login
+          const user = result.user;
+          console.log("LoginForm useEffect: Google sign-in successful via redirect. User:", user.uid, user.email);
           toast({
             title: "Accesso Riuscito!",
             description: "Accesso effettuato con Google. Verrai reindirizzato a breve.",
           });
-          const companyExists = await checkCompanyExists(result.user.uid);
+
+          const companyExists = await checkCompanyExists(user.uid);
           if (companyExists) {
+            console.log("LoginForm useEffect: Company exists for Google user. Redirecting to /dashboard.");
             router.push('/dashboard');
           } else {
-            router.push('/register'); // To the unified registration form
+            console.log("LoginForm useEffect: Company DOES NOT exist for Google user. Redirecting to /register.");
+            router.push('/register'); 
           }
+        } else {
+          console.log("LoginForm useEffect: No redirect result or user not found in result.");
+          // No redirect was pending, or it was already handled.
+          // No need to set isGoogleLoading to false here if it wasn't set true above for this path.
         }
-        // If result is null, no redirect was pending or it was already consumed.
       } catch (error: any) {
-        console.error("Errore durante getRedirectResult:", error);
+        setIsGoogleLoading(true); // Indicate we were trying to process, even if it failed
+        console.error("LoginForm useEffect: Error during getRedirectResult:", error);
         let errorMessage = "Errore durante l'accesso con Google. Riprova.";
         if (error.code === "auth/account-exists-with-different-credential") {
           errorMessage = "Un account esiste già con questa email ma con un metodo di accesso diverso.";
         } else if (error.code === "auth/cancelled-popup-request" || error.code === "auth/popup-closed-by-user" || error.code === "auth/redirect-cancelled-by-user") {
           errorMessage = "Processo di accesso Google interrotto o annullato.";
+        } else if (error.code === "auth/redirect-error"){
+            errorMessage = "Errore durante il reindirizzamento da Google. Riprova.";
         }
         toast({
           title: "Errore Accesso Google",
@@ -92,26 +117,31 @@ export function LoginForm() {
           variant: "destructive",
         });
       } finally {
-        // Ensure loading is false if it was set true by this effect,
-        // or if it was true from a previous button click before redirect.
-        // This might need careful handling if multiple async operations can set it.
-         setIsGoogleLoading(false);
+        // Only set to false if we actually started processing (i.e., if result.user was found or an error occurred)
+        // If isGoogleLoading was true (because result.user was true or an error happened) set it to false.
+        // If result was null and no error, isGoogleLoading might still be false from initial state.
+        if (isGoogleLoading) { // Check if it was set to true during this effect's try/catch
+             setIsGoogleLoading(false);
+        }
+        console.log("LoginForm useEffect: getRedirectResult processing finished. isGoogleLoading:", isGoogleLoading);
       }
     };
 
-    handleAsyncRedirect();
+    processRedirectResult();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth, router, toast]); // router and toast are stable, auth is stable.
-
+  }, []); // Empty dependency array: run once on mount. Router, toast, auth are stable enough for this.
 
   const handleSuccessfulLoginRedirect = async (user: FirebaseUser) => {
+    console.log("handleSuccessfulLoginRedirect called for user:", user.uid);
     // This function is called after a successful login (email or Google)
     // The specific loading state (isEmailLoading/isGoogleLoading) is managed by the caller.
     try {
       const companyExists = await checkCompanyExists(user.uid);
       if (companyExists) {
+        console.log("handleSuccessfulLoginRedirect: Company exists. Redirecting to /dashboard.");
         router.push('/dashboard');
       } else {
+        console.log("handleSuccessfulLoginRedirect: Company DOES NOT exist. Redirecting to /register.");
         router.push('/register'); 
       }
     } catch (error) {
@@ -121,21 +151,26 @@ export function LoginForm() {
             description: "Impossibile verificare i dati aziendali o reindirizzare.",
             variant: "destructive",
         });
+        // Ensure loading state is reset if it was an email login
+        if(isEmailLoading) setIsEmailLoading(false);
     }
   };
 
-
   async function onEmailSubmit(data: LoginFormValues) {
+    console.log("onEmailSubmit called with data:", data.email);
     setIsEmailLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+      console.log("onEmailSubmit: Email sign-in successful. User:", userCredential.user.uid);
       toast({
         title: "Accesso Riuscito!",
         description: "Verrai reindirizzato a breve.",
       });
-      await handleSuccessfulLoginRedirect(userCredential.user);
+      // Let AuthRedirectHandler take care of redirection based on auth state
+      // but we can still call our logic to ensure immediate feedback if needed.
+      await handleSuccessfulLoginRedirect(userCredential.user); 
     } catch (error: any) {
-      console.error("Errore di login con email:", error);
+      console.error("onEmailSubmit: Errore di login con email:", error);
       let errorMessage = "Credenziali non valide o utente non trovato. Riprova.";
        if (error.code) {
         switch (error.code) {
@@ -161,19 +196,23 @@ export function LoginForm() {
       });
     } finally {
       setIsEmailLoading(false);
+      console.log("onEmailSubmit: Email login processing finished. isEmailLoading:", isEmailLoading);
     }
   }
 
   const handleGoogleLogin = async () => {
-    setIsGoogleLoading(true);
+    console.log("handleGoogleLogin called.");
+    setIsGoogleLoading(true); // Set loading true before initiating redirect
     const provider = new GoogleAuthProvider();
     try {
+      console.log("handleGoogleLogin: Attempting signInWithRedirect...");
       await signInWithRedirect(auth, provider);
       // After this call, the page will redirect. 
       // The result will be handled by the useEffect hook with getRedirectResult.
-      // No further action needed here except setting loading and initiating.
+      // isGoogleLoading will remain true until the page reloads and useEffect processes the result.
+      console.log("handleGoogleLogin: signInWithRedirect initiated. Page should redirect now.");
     } catch (error: any) {
-      console.error("Errore durante l'avvio di signInWithRedirect:", error);
+      console.error("handleGoogleLogin: Errore durante l'avvio di signInWithRedirect:", error);
       toast({
         title: "Errore Avvio Accesso Google",
         description: "Impossibile avviare il processo di accesso con Google. Riprova.",
@@ -248,9 +287,9 @@ export function LoginForm() {
           variant="outline" 
           className="w-full" 
           onClick={handleGoogleLogin}
-          disabled={isEmailLoading || isGoogleLoading} // Disable if any login process is active
+          disabled={isEmailLoading || isGoogleLoading}
         >
-          {isGoogleLoading ? ( // Show loader if google login is in progress (either initiating redirect or processing result)
+          {isGoogleLoading ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
             <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
