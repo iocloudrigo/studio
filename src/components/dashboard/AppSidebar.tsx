@@ -32,8 +32,9 @@ import {
 import { Button } from "../ui/button";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import Image from "next/image";
-import { Card, CardContent } from "@/components/ui/card";
+// Removed Image import as the upgrade banner is removed
+// import Image from "next/image"; 
+import { Card, CardContent } from "@/components/ui/card"; // Keep Card for potential future use, but not used now
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -53,7 +54,7 @@ const navItems = [
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { state: sidebarState } = useSidebar(); // Removed 'open' as it's not directly used here for logic, defaultOpen is handled by Provider
+  const { state: sidebarState } = useSidebar();
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
 
   const toggleSubmenu = (label: string) => {
@@ -61,16 +62,14 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar"> {/* Removed defaultOpen={true} */}
+    <Sidebar collapsible="icon" variant="sidebar">
       <SidebarHeader className="border-b">
-        {/* Show full logo when expanded, icon/smaller when collapsed */}
         {sidebarState === "expanded" ? (
           <Link href="/dashboard" className="flex items-center gap-2 py-2">
             <Logo />
           </Link>
         ) : (
           <Link href="/dashboard" className="flex items-center justify-center py-2">
-             {/* Placeholder for small logo/icon when collapsed */}
             <LayoutDashboard className="h-6 w-6 text-primary" />
           </Link>
         )}
@@ -130,7 +129,8 @@ export function AppSidebar() {
           ))}
         </SidebarMenu>
       </SidebarContent>
-      {sidebarState === "expanded" && (
+      {/* Removed the Upgrade Plan Card from the SidebarFooter */}
+      {/* {sidebarState === "expanded" && (
         <>
           <SidebarSeparator />
           <SidebarFooter className="p-4 border-t">
@@ -144,7 +144,7 @@ export function AppSidebar() {
               </Card>
           </SidebarFooter>
         </>
-      )}
+      )} */}
     </Sidebar>
   );
 }

@@ -1,22 +1,136 @@
+
+"use client";
+
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import Image from "next/image";
-import { FileText, CalendarDays, PlusCircle, Lightbulb } from "lucide-react";
+import { FileText, CalendarDays, PlusCircle, Lightbulb, User, Users } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
+
+import { auth, db } from "@/lib/firebase";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import { collection, query, where, getCountFromServer, getDocs, orderBy, limit, Timestamp } from "firebase/firestore";
+
+interface DashboardStats {
+  activeRequests: number;
+  pendingAppointments: number;
+  techniciansAvailable: number;
+}
+
+interface RecentRequest {
+  id: string;
+  customer: string;
+  service: string;
+  status: string;
+}
 
 export default function DashboardPage() {
-  // Mock data - replace with actual data fetching
-  const stats = {
-    activeRequests: 12,
-    pendingAppointments: 5,
-    techniciansAvailable: 8,
-  };
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [companyId, setCompanyId] = useState<string | null>(null);
 
-  const recentRequests = [
-    { id: "REQ001", summary: "Riparazione perdita d'acqua cucina", status: "In attesa di tecnico", customer: "Laura Bianchi" },
-    { id: "REQ002", summary: "Installazione nuovo condizionatore", status: "Tecnico assegnato", customer: "Marco Verdi" },
-    { id: "REQ003", summary: "Manutenzione caldaia annuale", status: "Completato", customer: "Giulia Neri" },
-  ];
+  const [stats, setStats] = useState<DashboardStats>({
+    activeRequests: 0,
+    pendingAppointments: 0,
+    techniciansAvailable: 0,
+  });
+  const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([]);
+  
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [loadingRequests, setLoadingRequests] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser(user);
+        setCompanyId(user.uid); // Assuming user.uid is the companyId for filtering
+      } else {
+        setCurrentUser(null);
+        setCompanyId(null);
+        // Optionally redirect to login if not authenticated
+        // router.push('/'); 
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!companyId) {
+      setLoadingStats(false); // Stop loading if no companyId (e.g. logged out)
+      setLoadingRequests(false);
+      setStats({ activeRequests: 0, pendingAppointments: 0, techniciansAvailable: 0 });
+      setRecentRequests([]);
+      return;
+    }
+
+    const fetchDashboardData = async () => {
+      setLoadingStats(true);
+      setLoadingRequests(true);
+
+      // Fetch Stats
+      try {
+        const activeRequestsQuery = query(
+          collection(db, "richieste_clienti"),
+          where("id_azienda", "==", companyId),
+          where("status", "in", ["Nuova", "In attesa", "Assegnato"]) // Statuses not 'Completato'
+        );
+        const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
+
+        const now = Timestamp.now();
+        const pendingAppointmentsQuery = query(
+          collection(db, "interventi_confermati"),
+          where("id_azienda", "==", companyId),
+          where("data_ora", ">", now)
+        );
+        const pendingAppointmentsSnap = await getCountFromServer(pendingAppointmentsQuery);
+
+        const techniciansQuery = query(
+          collection(db, "tecnici"),
+          where("id_azienda", "==", companyId)
+        );
+        const techniciansSnap = await getCountFromServer(techniciansQuery);
+
+        setStats({
+          activeRequests: activeRequestsSnap.data().count,
+          pendingAppointments: pendingAppointmentsSnap.data().count,
+          techniciansAvailable: techniciansSnap.data().count,
+        });
+      } catch (error) {
+        console.error("Error fetching dashboard stats:", error);
+        setStats({ activeRequests: 0, pendingAppointments: 0, techniciansAvailable: 0 }); // Reset on error
+      } finally {
+        setLoadingStats(false);
+      }
+
+      // Fetch Recent Requests
+      try {
+        const requestsQuery = query(
+          collection(db, "richieste_clienti"),
+          where("id_azienda", "==", companyId),
+          orderBy("created_at", "desc"), // Ensure 'created_at' field (Timestamp) exists
+          limit(5)
+        );
+        const requestsSnapshot = await getDocs(requestsQuery);
+        const fetchedRequests = requestsSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            customer: data.customer || "N/D",
+            service: data.service || data.tipo_servizio || "N/D", // Prioritize service, fallback to tipo_servizio
+            status: data.status || "N/D",
+          };
+        }) as RecentRequest[];
+        setRecentRequests(fetchedRequests);
+      } catch (error) {
+        console.error("Error fetching recent requests:", error);
+        setRecentRequests([]); // Reset on error
+      } finally {
+        setLoadingRequests(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [companyId]);
 
   return (
     <div className="space-y-6">
@@ -40,7 +154,11 @@ export default function DashboardPage() {
             <FileText className="h-5 w-5 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.activeRequests}</div>
+            {loadingStats ? (
+              <Skeleton className="h-7 w-1/4" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.activeRequests}</div>
+            )}
             <p className="text-xs text-muted-foreground">Interventi in corso o da assegnare</p>
           </CardContent>
         </Card>
@@ -50,18 +168,26 @@ export default function DashboardPage() {
             <CalendarDays className="h-5 w-5 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.pendingAppointments}</div>
+            {loadingStats ? (
+              <Skeleton className="h-7 w-1/4" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.pendingAppointments}</div>
+            )}
             <p className="text-xs text-muted-foreground">Da confermare o programmare</p>
           </CardContent>
         </Card>
         <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tecnici Disponibili</CardTitle>
-            <Lightbulb className="h-5 w-5 text-primary" />
+            <CardTitle className="text-sm font-medium">Tecnici Registrati</CardTitle> {/* Changed title slightly */}
+            <Users className="h-5 w-5 text-primary" /> {/* Changed icon */}
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.techniciansAvailable}</div>
-            <p className="text-xs text-muted-foreground">Pronti per nuovi incarichi</p>
+            {loadingStats ? (
+              <Skeleton className="h-7 w-1/4" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.techniciansAvailable}</div>
+            )}
+            <p className="text-xs text-muted-foreground">Tecnici associati all'azienda</p>
           </CardContent>
         </Card>
       </div>
@@ -73,7 +199,13 @@ export default function DashboardPage() {
           <CardDescription>Visualizza le richieste di intervento più recenti.</CardDescription>
         </CardHeader>
         <CardContent>
-          {recentRequests.length > 0 ? (
+          {loadingRequests ? (
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : recentRequests.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -88,14 +220,16 @@ export default function DashboardPage() {
                 <tbody>
                   {recentRequests.map((req) => (
                     <tr key={req.id} className="border-b hover:bg-muted/50">
-                      <td className="p-3 text-sm">{req.id}</td>
+                      <td className="p-3 text-sm font-medium text-primary">{req.id.substring(0, 6)}...</td> {/* Shorten ID if too long */}
                       <td className="p-3 text-sm">{req.customer}</td>
-                      <td className="p-3 text-sm">{req.summary}</td>
+                      <td className="p-3 text-sm">{req.service}</td>
                       <td className="p-3 text-sm">
                         <span className={`px-2 py-1 text-xs rounded-full ${
                           req.status === "Completato" ? "bg-green-100 text-green-700" :
-                          req.status === "Tecnico assegnato" ? "bg-blue-100 text-blue-700" :
-                          "bg-yellow-100 text-yellow-700"
+                          req.status === "Assegnato" ? "bg-blue-100 text-blue-700" :
+                          req.status === "In attesa" ? "bg-orange-100 text-orange-700" :
+                          req.status === "Nuova" ? "bg-purple-100 text-purple-700" :
+                          "bg-yellow-100 text-yellow-700" // Fallback for other statuses
                         }`}>
                           {req.status}
                         </span>
@@ -119,7 +253,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Placeholder for other sections like upcoming appointments or AI suggestions summary */}
+      {/* Placeholder for other sections */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg">
           <CardHeader>
@@ -133,15 +267,18 @@ export default function DashboardPage() {
         </Card>
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>Suggerimenti AI</CardTitle>
+            <CardTitle>Assistenza AI</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-             <Image src="https://placehold.co/400x200.png" alt="AI suggestions placeholder" width={200} height={100} data-ai-hint="abstract technology" className="rounded-md mb-2 opacity-70" />
-            <p>L'AI è pronta ad assisterti.</p>
-            <Button variant="link" asChild className="mt-2 text-accent"><Link href="/dashboard/requests/suggestions">Analizza richieste</Link></Button>
+            <Lightbulb className="h-12 w-12 mb-4 text-primary opacity-70" />
+            <p className="mb-3 text-center">Richiedi un suggerimento al nostro assistente AI per ottimizzare l'assegnazione dei tecnici.</p>
+            <Button variant="outline" asChild className="text-accent border-accent hover:bg-accent/10">
+                <Link href="/dashboard/requests/suggestions">Richiedi Suggerimento AI</Link>
+            </Button>
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
+
