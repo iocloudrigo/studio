@@ -18,12 +18,11 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, Lock, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation"; // Keep for potential future use if AuthRedirectHandler is removed/changed
+import { useRouter } from "next/navigation"; 
 import { useState } from "react";
 
 // Firebase imports
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-// Removed: getDoc, doc, db. AuthRedirectHandler handles company check.
 import { auth } from "@/lib/firebase";
 import { Separator } from "@/components/ui/separator";
 
@@ -36,7 +35,7 @@ type LoginFormValues = z.infer<typeof LoginFormSchema>;
 
 export function LoginForm() {
   const { toast } = useToast();
-  // const router = useRouter(); // Not directly used for redirection now, AuthRedirectHandler does it.
+  const router = useRouter(); // Needed for redirecting to /register for new Google users
   const [isEmailLoading, setIsEmailLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
@@ -52,12 +51,15 @@ export function LoginForm() {
     setIsEmailLoading(true);
     try {
       await signInWithEmailAndPassword(auth, data.email, data.password);
-      // Login successful. AuthRedirectHandler will take over for redirection.
+      // Login successful. AuthRedirectHandler will take over for redirection to dashboard or /register (if company missing).
       toast({
         title: "Accesso Riuscito!",
         description: "Verrai reindirizzato a breve.",
       });
-      // No router.push here, AuthRedirectHandler manages it.
+      // Explicitly push to a neutral route to trigger AuthRedirectHandler if not already on a relevant page.
+      // Or rely on AuthRedirectHandler to pick up the change from onAuthStateChanged.
+      // Forcing a navigation might be slightly more robust.
+       router.push('/dashboard'); // AuthRedirectHandler will intercept if needed
     } catch (error: any) {
       console.error("Errore di login con email:", error);
       let errorMessage = "Credenziali non valide o utente non trovato. Riprova.";
@@ -98,7 +100,8 @@ export function LoginForm() {
         title: "Accesso Riuscito!",
         description: "Accesso effettuato con Google. Verrai reindirizzato a breve.",
       });
-      // No router.push here, AuthRedirectHandler manages it.
+      // AuthRedirectHandler will determine if user needs to go to /register or /dashboard
+      router.push('/dashboard'); // AuthRedirectHandler will intercept if needed
     } catch (error: any) {
       console.error("Errore di login con Google:", error);
       let errorMessage = "Errore durante l'accesso con Google. Riprova.";
@@ -120,7 +123,7 @@ export function LoginForm() {
   };
 
   return (
-    <Card className="w-full shadow-xl">
+    <Card className="w-full max-w-md shadow-xl"> {/* Ensure max-w-md from original AuthLayout */}
       <CardHeader className="space-y-1 text-center">
         <CardTitle className="text-2xl">Accedi</CardTitle>
         <CardDescription>
