@@ -18,13 +18,13 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, Lock, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation"; // Keep for potential future use if AuthRedirectHandler is removed/changed
 import { useState } from "react";
 
 // Firebase imports
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+// Removed: getDoc, doc, db. AuthRedirectHandler handles company check.
+import { auth } from "@/lib/firebase";
 import { Separator } from "@/components/ui/separator";
 
 const LoginFormSchema = z.object({
@@ -36,7 +36,7 @@ type LoginFormValues = z.infer<typeof LoginFormSchema>;
 
 export function LoginForm() {
   const { toast } = useToast();
-  const router = useRouter();
+  // const router = useRouter(); // Not directly used for redirection now, AuthRedirectHandler does it.
   const [isEmailLoading, setIsEmailLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
@@ -51,30 +51,13 @@ export function LoginForm() {
   async function onEmailSubmit(data: LoginFormValues) {
     setIsEmailLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
-      const user = userCredential.user;
-
-      if (user) {
-        const companyDocRef = doc(db, "aziende", user.uid);
-        const companyDocSnap = await getDoc(companyDocRef);
-
-        if (companyDocSnap.exists()) {
-          toast({
-            title: "Accesso Riuscito!",
-            description: "Verrai reindirizzato alla dashboard.",
-          });
-          router.push('/dashboard');
-        } else {
-          toast({
-            title: "Accesso Riuscito!",
-            description: "Completa la registrazione della tua azienda.",
-          });
-          router.push('/registra-azienda');
-        }
-      } else {
-        // Questo caso non dovrebbe verificarsi se signInWithEmailAndPassword ha successo
-        throw new Error("Utente non trovato dopo il login.");
-      }
+      await signInWithEmailAndPassword(auth, data.email, data.password);
+      // Login successful. AuthRedirectHandler will take over for redirection.
+      toast({
+        title: "Accesso Riuscito!",
+        description: "Verrai reindirizzato a breve.",
+      });
+      // No router.push here, AuthRedirectHandler manages it.
     } catch (error: any) {
       console.error("Errore di login con email:", error);
       let errorMessage = "Credenziali non valide o utente non trovato. Riprova.";
@@ -109,27 +92,13 @@ export function LoginForm() {
     setIsGoogleLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      const userCredential = await signInWithPopup(auth, provider);
-      const user = userCredential.user;
-
-      if (user) {
-        const companyDocRef = doc(db, "aziende", user.uid);
-        const companyDocSnap = await getDoc(companyDocRef);
-
-        if (companyDocSnap.exists()) {
-          toast({
-            title: "Accesso Riuscito!",
-            description: "Accesso effettuato con Google. Verrai reindirizzato.",
-          });
-          router.push('/dashboard');
-        } else {
-          toast({
-            title: "Accesso Riuscito!",
-            description: "Completa la registrazione della tua azienda.",
-          });
-          router.push('/registra-azienda');
-        }
-      }
+      await signInWithPopup(auth, provider);
+      // Login with Google successful. AuthRedirectHandler will take over.
+       toast({
+        title: "Accesso Riuscito!",
+        description: "Accesso effettuato con Google. Verrai reindirizzato a breve.",
+      });
+      // No router.push here, AuthRedirectHandler manages it.
     } catch (error: any) {
       console.error("Errore di login con Google:", error);
       let errorMessage = "Errore durante l'accesso con Google. Riprova.";
@@ -233,7 +202,7 @@ export function LoginForm() {
             Non hai un account?{' '}
             <Button variant="link" asChild className="text-accent p-0 h-auto">
               <Link href="/register">
-                Registrati (Email)
+                Registrati
               </Link>
             </Button>
           </p>
@@ -241,4 +210,3 @@ export function LoginForm() {
     </Card>
   );
 }
-

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,17 +17,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Briefcase, Mail, Lock } from "lucide-react";
+import { Briefcase, Mail, Lock, Loader2 } from "lucide-react"; // Added Loader2
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 // Firebase imports
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+// Removed Firestore imports (doc, setDoc, serverTimestamp, db) as company creation is moved
+import { auth } from "@/lib/firebase"; 
 
 const RegisterFormSchema = z.object({
-  companyName: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
+  // Removed companyName from here as it's part of /registra-azienda
   email: z.string().email({ message: "Indirizzo email non valido." }),
   password: z.string().min(6, { message: "La password deve contenere almeno 6 caratteri." }),
   confirmPassword: z.string(),
@@ -37,25 +38,14 @@ const RegisterFormSchema = z.object({
 
 type RegisterFormValues = z.infer<typeof RegisterFormSchema>;
 
-// Slug generation utility
-const generateSlug = (name: string): string => {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '-') // Replace spaces with -
-    .replace(/[^\w-]+/g, '') // Remove all non-word chars (keeps letters, numbers, underscore, hyphen)
-    .replace(/--+/g, '-'); // Replace multiple - with single -
-};
-
 export function RegisterForm() {
   const { toast } = useToast();
-  const router = useRouter();
+  const router = useRouter(); // Router might still be needed for other purposes or future enhancements
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(RegisterFormSchema),
     defaultValues: {
-      companyName: "",
       email: "",
       password: "",
       confirmPassword: "",
@@ -66,35 +56,19 @@ export function RegisterForm() {
     setIsLoading(true);
     try {
       // 1. Create user with Firebase Authentication
-      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-      const user = userCredential.user;
+      await createUserWithEmailAndPassword(auth, data.email, data.password);
+      
+      // User is created. AuthRedirectHandler will now take over.
+      // No need to create company document here.
+      // No need to manually redirect here.
+      
+      toast({
+        title: "Registrazione Iniziale Completata!",
+        description: "Verrai reindirizzato per completare i dettagli della tua azienda.",
+      });
 
-      if (user) {
-        // 2. Create document in Firestore
-        const companySlug = generateSlug(data.companyName);
-        // Use user.uid as the document ID for the 'aziende' collection
-        const companyDocRef = doc(db, "aziende", user.uid); 
-
-        await setDoc(companyDocRef, {
-          nome: data.companyName,
-          slug: companySlug,
-          email_admin: user.email,
-          uid_admin: user.uid,
-          data_creazione: serverTimestamp(),
-        });
-        
-        toast({
-          title: "Registrazione Completata!",
-          description: "Account creato con successo. Verrai reindirizzato alla dashboard.",
-        });
-
-        // 3. Redirect to dashboard
-        router.push('/dashboard');
-
-      } else {
-        // This case should ideally not be reached if createUserWithEmailAndPassword succeeds
-        throw new Error("Creazione utente fallita inaspettatamente.");
-      }
+      // AuthRedirectHandler is expected to pick up the new auth state
+      // and redirect to /registra-azienda if company profile is missing.
 
     } catch (error: any) {
       console.error("Errore di registrazione:", error);
@@ -127,36 +101,21 @@ export function RegisterForm() {
   return (
     <Card className="w-full shadow-xl">
       <CardHeader className="space-y-1 text-center">
-        <CardTitle className="text-2xl">Registra la tua Azienda</CardTitle>
+        <CardTitle className="text-2xl">Crea il tuo Account</CardTitle>
         <CardDescription>
-          Crea un account per iniziare a gestire le richieste di intervento.
+          Registrati per accedere e poi configura la tua azienda.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="companyName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nome Azienda</FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Briefcase className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input placeholder="Nome della tua azienda" {...field} className="pl-10" disabled={isLoading} />
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Removed companyName field from this form */}
             <FormField
               control={form.control}
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email Amministratore</FormLabel>
+                  <FormLabel>Email</FormLabel>
                   <FormControl>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -200,7 +159,7 @@ export function RegisterForm() {
               )}
             />
             <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isLoading}>
-              {isLoading ? "Registrazione in corso..." : "Registrati"}
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Crea Account"}
             </Button>
           </form>
         </Form>
