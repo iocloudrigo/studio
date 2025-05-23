@@ -30,9 +30,9 @@ const generateSlug = (name: string): string => {
   return name
     .toLowerCase()
     .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^\w-]+/g, '') 
-    .replace(/--+/g, '-');
+    .replace(/\s+/g, '-') // Sostituisce spazi con trattini
+    .replace(/[^\w-]+/g, '') // Rimuove caratteri non alfanumerici eccetto trattini
+    .replace(/--+/g, '-'); // Sostituisce trattini multipli con uno singolo
 };
 
 const activitySectorOptions = [
@@ -65,6 +65,7 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
   const { toast } = useToast();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
 
   const form = useForm<RegistraAziendaFormValues>({
     resolver: zodResolver(RegistraAziendaFormSchema),
@@ -79,18 +80,24 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
   });
 
   const companyNameValue = form.watch("companyName");
-  const slugValue = form.watch("slug");
+  const slugValue = form.watch("slug"); // For displaying the preview link
 
   useEffect(() => {
-    if (form.formState.dirtyFields.slug) return; // Non sovrascrivere se l'utente ha modificato manualmente lo slug
-    form.setValue("slug", generateSlug(companyNameValue), { shouldValidate: true });
-  }, [companyNameValue, form]);
+    if (isSlugManuallyEdited) {
+      return;
+    }
+    const newSlug = generateSlug(companyNameValue);
+    if (form.getValues("slug") !== newSlug) { // Avoid unnecessary setValue if slug is already correct
+        form.setValue("slug", newSlug, { shouldValidate: true });
+    }
+  }, [companyNameValue, form, isSlugManuallyEdited]);
+
 
   async function onSubmit(data: RegistraAziendaFormValues) {
     setIsLoading(true);
 
-    const finalSlug = generateSlug(data.slug); // Normalizza lo slug prima di usarlo
-    if (finalSlug !== data.slug) {
+    const finalSlug = generateSlug(data.slug); // Normalize the slug from form data
+    if (finalSlug !== data.slug) { // If normalization changed it, update form value for consistency
       form.setValue("slug", finalSlug, { shouldValidate: true });
     }
     
@@ -106,30 +113,31 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
       const q = query(aziendeRef, where("slug", "==", finalSlug));
       const querySnapshot = await getDocs(q);
 
-      let slugIsTakenByAnotherUser = false;
+      let slugIsTaken = false;
       if (!querySnapshot.empty) {
         querySnapshot.forEach((docSnap) => {
-          if (docSnap.id !== user.uid) {
-            slugIsTakenByAnotherUser = true;
+          // Check if the slug is taken by *another* company (relevant for updates, but good for new too)
+          if (docSnap.id !== user.uid) { 
+            slugIsTaken = true;
           }
         });
       }
 
-      if (slugIsTakenByAnotherUser) {
+      if (slugIsTaken) {
         form.setError("slug", { type: "manual", message: "Questo slug è già utilizzato da un'altra azienda. Scegline uno diverso." });
         setIsLoading(false);
         return;
       }
 
-      const companyDocRef = doc(db, "aziende", user.uid);
+      const companyDocRef = doc(db, "aziende", user.uid); // User UID as document ID
       
-      const dataToSave: any = {
+      const dataToSave: { [key: string]: any } = { // Explicitly type dataToSave or use a more specific type
         nome: data.companyName,
         slug: finalSlug,
-        email_admin: user.email,
+        email_admin: user.email, 
         uid_admin: user.uid,
         data_creazione: serverTimestamp(),
-        metodo_registrazione: "form_completion_post_auth", // o specifico se da Google
+        metodo_registrazione: "form_completion_post_auth", // Or be more specific based on context if available
       };
 
       if (data.companyPhone && data.companyPhone.trim() !== '') {
@@ -150,7 +158,7 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
       });
       router.push('/dashboard');
 
-    } catch (error: any) {
+    } catch (error: any) { // Consider more specific error typing if possible
       console.error("Errore durante la registrazione dell'azienda:", error);
       toast({
         title: "Errore di Registrazione",
@@ -214,13 +222,15 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
                   <FormControl>
                     <div className="relative">
                       <LinkIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input placeholder="es: idraulica-rossi" {...field} className="pl-10" disabled={isLoading} 
+                      <Input 
+                        placeholder="es: idraulica-rossi" 
+                        {...field} 
+                        className="pl-10" 
+                        disabled={isLoading} 
                         onChange={(e) => {
-                          form.setValue('slug', e.target.value, {shouldValidate: true});
-                          form.clearErrors('slug'); // Clear previous validation errors on manual edit
-                          if (!form.formState.dirtyFields.slug) {
-                            form.control.set आमच्या('slug', true); // Mark as dirty manually if it's the first manual change
-                          }
+                          field.onChange(e.target.value);
+                          setIsSlugManuallyEdited(true); 
+                          form.clearErrors('slug');
                         }}
                       />
                     </div>
@@ -301,6 +311,5 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
     </Card>
   );
 }
-
 
     
