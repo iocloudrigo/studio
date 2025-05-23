@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,17 +17,43 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Lock } from "lucide-react";
+import { Mail, Lock, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+// Firebase imports
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, User } from "firebase/auth";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
+import { Separator } from "@/components/ui/separator";
 
 const LoginFormSchema = z.object({
   email: z.string().email({ message: "Indirizzo email non valido." }),
-  password: z.string().min(6, { message: "La password deve contenere almeno 6 caratteri." }),
+  password: z.string().min(1, { message: "La password è richiesta." }), // Min 1 char to trigger required error if empty
 });
 
 type LoginFormValues = z.infer<typeof LoginFormSchema>;
 
+// Slug generation utility for Google Sign-In
+const generateSlugFromEmail = (email: string): string => {
+  const emailParts = email.split('@');
+  if (emailParts.length > 0) {
+    return emailParts[0]
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w-]+/g, '') 
+      .replace(/--+/g, '-');
+  }
+  return `utente-${Date.now()}`; // Fallback slug
+};
+
+
 export function LoginForm() {
   const { toast } = useToast();
+  const router = useRouter();
+  const [isEmailLoading, setIsEmailLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(LoginFormSchema),
     defaultValues: {
@@ -35,15 +62,100 @@ export function LoginForm() {
     },
   });
 
-  function onSubmit(data: LoginFormValues) {
-    console.log(data);
-    // TODO: Implement actual login logic
-    toast({
-      title: "Login Tentativo",
-      description: "Credenziali inviate: " + JSON.stringify(data),
-    });
-    // router.push('/dashboard'); // Redirect on successful login
+  async function onEmailSubmit(data: LoginFormValues) {
+    setIsEmailLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, data.email, data.password);
+      toast({
+        title: "Accesso Riuscito!",
+        description: "Verrai reindirizzato alla dashboard.",
+      });
+      router.push('/dashboard');
+    } catch (error: any) {
+      console.error("Errore di login con email:", error);
+      let errorMessage = "Credenziali non valide o utente non trovato. Riprova.";
+      if (error.code) {
+        switch (error.code) {
+          case "auth/user-not-found":
+          case "auth/wrong-password":
+          case "auth/invalid-credential": // General invalid credential error for newer SDKs
+            errorMessage = "Email o password errati. Controlla e riprova.";
+            break;
+          case "auth/invalid-email":
+            errorMessage = "L'indirizzo email non è formattato correttamente.";
+            break;
+          case "auth/too-many-requests":
+            errorMessage = "Accesso temporaneamente bloccato a causa di troppi tentativi falliti. Riprova più tardi.";
+            break;
+          default:
+            errorMessage = `Si è verificato un errore: ${error.message}`;
+        }
+      }
+      toast({
+        title: "Errore di Accesso",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsEmailLoading(false);
+    }
   }
+
+  const handleGoogleLogin = async () => {
+    setIsGoogleLoading(true);
+    const provider = new GoogleAuthProvider();
+    try {
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
+
+      if (user) {
+        // Check if company document already exists for this user
+        const companyDocRef = doc(db, "aziende", user.uid);
+        const companyDocSnap = await getDoc(companyDocRef);
+
+        if (!companyDocSnap.exists()) {
+          // User is new, create company document
+          const companySlug = generateSlugFromEmail(user.email || `utente-${user.uid}`);
+          await setDoc(companyDocRef, {
+            nome: "Nuova Azienda", // Default name for Google Sign-Up
+            slug: companySlug,
+            email_admin: user.email,
+            uid_admin: user.uid,
+            data_creazione: serverTimestamp(),
+            metodo_registrazione: "google", // Optional: track registration method
+          });
+          toast({
+            title: "Registrazione e Accesso Completati!",
+            description: "Account creato e accesso effettuato con Google. Verrai reindirizzato.",
+          });
+        } else {
+          toast({
+            title: "Accesso Riuscito!",
+            description: "Accesso effettuato con Google. Verrai reindirizzato.",
+          });
+        }
+        router.push('/dashboard');
+      }
+    } catch (error: any) {
+      console.error("Errore di login con Google:", error);
+      let errorMessage = "Errore durante l'accesso con Google. Riprova.";
+      if (error.code === "auth/popup-closed-by-user") {
+        errorMessage = "La finestra di accesso Google è stata chiusa. Riprova.";
+      } else if (error.code === "auth/cancelled-popup-request") {
+        errorMessage = "Richiesta di accesso Google annullata. Riprova se intendevi accedere.";
+      } else if (error.code === "auth/account-exists-with-different-credential") {
+        errorMessage = "Un account esiste già con questa email ma con un metodo di accesso diverso. Prova ad accedere con l'altro metodo.";
+      }
+      toast({
+        title: "Errore Accesso Google",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
 
   return (
     <Card className="w-full shadow-xl">
@@ -53,9 +165,9 @@ export function LoginForm() {
           Inserisci le tue credenziali per accedere alla dashboard aziendale.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-6">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onEmailSubmit)} className="space-y-6">
             <FormField
               control={form.control}
               name="email"
@@ -65,7 +177,7 @@ export function LoginForm() {
                   <FormControl>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input type="email" placeholder="mario.rossi@azienda.com" {...field} className="pl-10" />
+                      <Input type="email" placeholder="mario.rossi@azienda.com" {...field} className="pl-10" disabled={isEmailLoading || isGoogleLoading} />
                     </div>
                   </FormControl>
                   <FormMessage />
@@ -81,18 +193,47 @@ export function LoginForm() {
                   <FormControl>
                      <div className="relative">
                       <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" />
+                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" disabled={isEmailLoading || isGoogleLoading} />
                     </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isEmailLoading || isGoogleLoading}>
+              {isEmailLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Accedi
             </Button>
           </form>
         </Form>
+
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-background px-2 text-muted-foreground">
+              Oppure continua con
+            </span>
+          </div>
+        </div>
+
+        <Button 
+          variant="outline" 
+          className="w-full" 
+          onClick={handleGoogleLogin}
+          disabled={isEmailLoading || isGoogleLoading}
+        >
+          {isGoogleLoading ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
+              <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path>
+            </svg>
+          )}
+          Accedi con Google
+        </Button>
+
       </CardContent>
       <CardFooter className="flex flex-col items-center space-y-2">
           <p className="text-sm text-muted-foreground">
