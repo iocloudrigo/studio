@@ -17,12 +17,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Briefcase, Link as LinkIcon, Mail, Loader2 } from "lucide-react";
+import { Briefcase, Link as LinkIcon, Mail, Loader2, Phone, Building } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import type { User as FirebaseUser } from "firebase/auth";
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const generateSlug = (name: string): string => {
   if (!name) return "";
@@ -34,13 +35,24 @@ const generateSlug = (name: string): string => {
     .replace(/--+/g, '-');
 };
 
+const activitySectorOptions = [
+  { value: "", label: "Non specificato" },
+  { value: "Elettricista", label: "Elettricista" },
+  { value: "Idraulico", label: "Idraulico" },
+  { value: "Installatore", label: "Installatore" },
+  { value: "Multiservizi", label: "Multiservizi" },
+];
+
 const RegistraAziendaFormSchema = z.object({
   companyName: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
   slug: z.string()
           .min(1, { message: "Lo slug è richiesto." })
           .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: "Slug non valido. Usa solo lettere minuscole, numeri e trattini singoli, senza trattini all'inizio o alla fine." })
           .refine(s => !s.startsWith('-') && !s.endsWith('-'), {message: "Lo slug non può iniziare o finire con un trattino."}),
-  email: z.string().email(),
+  email: z.string().email(), // Readonly, prefilled
+  companyPhone: z.string().optional(),
+  activitySector: z.string().optional(),
+  companyCity: z.string().optional(),
 });
 
 type RegistraAziendaFormValues = z.infer<typeof RegistraAziendaFormSchema>;
@@ -60,32 +72,34 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
       companyName: "",
       slug: "",
       email: user.email || "",
+      companyPhone: "",
+      activitySector: "",
+      companyCity: "",
     },
   });
 
   const companyNameValue = form.watch("companyName");
+  const slugValue = form.watch("slug");
 
   useEffect(() => {
+    if (form.formState.dirtyFields.slug) return; // Non sovrascrivere se l'utente ha modificato manualmente lo slug
     form.setValue("slug", generateSlug(companyNameValue), { shouldValidate: true });
   }, [companyNameValue, form]);
 
   async function onSubmit(data: RegistraAziendaFormValues) {
     setIsLoading(true);
 
-    // Ri-genera lo slug dal campo slug per assicurare la formattazione finale corretta
-    const finalSlug = generateSlug(data.slug);
-    if (finalSlug !== data.slug) { // Se lo slug generato è diverso da quello nel form (es. l'utente ha messo maiuscole)
-      form.setValue("slug", finalSlug, { shouldValidate: true }); // Aggiorna il campo e rivalida
+    const finalSlug = generateSlug(data.slug); // Normalizza lo slug prima di usarlo
+    if (finalSlug !== data.slug) {
+      form.setValue("slug", finalSlug, { shouldValidate: true });
     }
     
-    // Ricontrolla la validità dello slug dopo la normalizzazione finale
-    const validationResult = RegistraAziendaFormSchema.shape.slug.safeParse(finalSlug);
-    if (!validationResult.success) {
-        form.setError("slug", { type: "manual", message: validationResult.error.errors[0]?.message || "Slug non valido dopo la normalizzazione." });
+    const slugValidationResult = RegistraAziendaFormSchema.shape.slug.safeParse(finalSlug);
+    if (!slugValidationResult.success) {
+        form.setError("slug", { type: "manual", message: slugValidationResult.error.errors[0]?.message || "Slug non valido dopo la normalizzazione." });
         setIsLoading(false);
         return;
     }
-
 
     try {
       const aziendeRef = collection(db, "aziende");
@@ -95,7 +109,7 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
       let slugIsTakenByAnotherUser = false;
       if (!querySnapshot.empty) {
         querySnapshot.forEach((docSnap) => {
-          if (docSnap.id !== user.uid) { // Lo slug esiste ed appartiene ad un altro utente
+          if (docSnap.id !== user.uid) {
             slugIsTakenByAnotherUser = true;
           }
         });
@@ -108,14 +122,27 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
       }
 
       const companyDocRef = doc(db, "aziende", user.uid);
-      await setDoc(companyDocRef, {
+      
+      const dataToSave: any = {
         nome: data.companyName,
         slug: finalSlug,
         email_admin: user.email,
         uid_admin: user.uid,
         data_creazione: serverTimestamp(),
-        metodo_registrazione: "google_plus_form_completion",
-      });
+        metodo_registrazione: "form_completion_post_auth", // o specifico se da Google
+      };
+
+      if (data.companyPhone && data.companyPhone.trim() !== '') {
+        dataToSave.telefono_contatto = data.companyPhone.trim();
+      }
+      if (data.activitySector && data.activitySector.trim() !== '') {
+        dataToSave.settore_attivita = data.activitySector;
+      }
+      if (data.companyCity && data.companyCity.trim() !== '') {
+        dataToSave.sede_citta = data.companyCity.trim();
+      }
+
+      await setDoc(companyDocRef, dataToSave);
       
       toast({
         title: "Azienda Registrata Correttamente!",
@@ -151,7 +178,7 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email Amministratore (Account Google)</FormLabel>
+                  <FormLabel>Email Amministratore</FormLabel>
                   <FormControl>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -187,12 +214,80 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
                   <FormControl>
                     <div className="relative">
                       <LinkIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input placeholder="es: idraulica-rossi" {...field} className="pl-10" disabled={isLoading} />
+                      <Input placeholder="es: idraulica-rossi" {...field} className="pl-10" disabled={isLoading} 
+                        onChange={(e) => {
+                          form.setValue('slug', e.target.value, {shouldValidate: true});
+                          form.clearErrors('slug'); // Clear previous validation errors on manual edit
+                          if (!form.formState.dirtyFields.slug) {
+                            form.control.set आमच्या('slug', true); // Mark as dirty manually if it's the first manual change
+                          }
+                        }}
+                      />
                     </div>
                   </FormControl>
                   <FormDescription>
-                    Verrà usato nell'URL pubblico per le richieste. Esempio: .../richiedi-intervento?azienda=<strong>{field.value || "tuo-slug"}</strong>
+                    Sarà usato nell'URL pubblico per le richieste clienti.
                   </FormDescription>
+                   <p className="text-xs text-muted-foreground mt-1">Il tuo link: <code className="font-semibold text-primary text-xs break-all">/richiedi-intervento?azienda={slugValue || "..."}</code></p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="companyPhone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Telefono Contatto Aziendale <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input type="tel" placeholder="Es: 02 1234567" {...field} className="pl-10" disabled={isLoading} />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="activitySector"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Settore Attività <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                    <FormControl>
+                      <div className="relative">
+                         <Briefcase className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground z-10" />
+                        <SelectTrigger className="pl-10">
+                          <SelectValue placeholder="Seleziona un settore..." />
+                        </SelectTrigger>
+                      </div>
+                    </FormControl>
+                    <SelectContent>
+                      {activitySectorOptions.map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="companyCity"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Sede (Città) <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Building className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input placeholder="Es: Milano" {...field} className="pl-10" disabled={isLoading} />
+                    </div>
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -206,3 +301,6 @@ export function RegistraAziendaForm({ user }: RegistraAziendaFormProps) {
     </Card>
   );
 }
+
+
+    
