@@ -22,8 +22,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 // Firebase imports
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore"; // Removed setDoc, serverTimestamp as company creation moved
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, type User as FirebaseUser } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { Separator } from "@/components/ui/separator";
 
@@ -51,12 +51,30 @@ export function LoginForm() {
   async function onEmailSubmit(data: LoginFormValues) {
     setIsEmailLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, data.email, data.password);
-      toast({
-        title: "Accesso Riuscito!",
-        description: "Verrai reindirizzato alla dashboard.",
-      });
-      router.push('/dashboard');
+      const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+      const user = userCredential.user;
+
+      if (user) {
+        const companyDocRef = doc(db, "aziende", user.uid);
+        const companyDocSnap = await getDoc(companyDocRef);
+
+        if (companyDocSnap.exists()) {
+          toast({
+            title: "Accesso Riuscito!",
+            description: "Verrai reindirizzato alla dashboard.",
+          });
+          router.push('/dashboard');
+        } else {
+          toast({
+            title: "Accesso Riuscito!",
+            description: "Completa la registrazione della tua azienda.",
+          });
+          router.push('/registra-azienda');
+        }
+      } else {
+        // Questo caso non dovrebbe verificarsi se signInWithEmailAndPassword ha successo
+        throw new Error("Utente non trovato dopo il login.");
+      }
     } catch (error: any) {
       console.error("Errore di login con email:", error);
       let errorMessage = "Credenziali non valide o utente non trovato. Riprova.";
@@ -99,19 +117,17 @@ export function LoginForm() {
         const companyDocSnap = await getDoc(companyDocRef);
 
         if (companyDocSnap.exists()) {
-          // Company document exists, user is already registered
           toast({
             title: "Accesso Riuscito!",
             description: "Accesso effettuato con Google. Verrai reindirizzato.",
           });
           router.push('/dashboard');
         } else {
-          // Company document does NOT exist, user is new or needs to complete company registration
           toast({
             title: "Accesso Riuscito!",
             description: "Completa la registrazione della tua azienda.",
           });
-          router.push('/registra-azienda'); // Redirect to new company registration page
+          router.push('/registra-azienda');
         }
       }
     } catch (error: any) {
@@ -225,3 +241,4 @@ export function LoginForm() {
     </Card>
   );
 }
+
