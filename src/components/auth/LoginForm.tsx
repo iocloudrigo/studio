@@ -19,8 +19,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { useToast } from "@/hooks/use-toast";
 import { Mail, Lock, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation"; 
-import { useState } from "react";
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, type User as FirebaseUser } from "firebase/auth";
+import { useState, useEffect } from "react";
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, getRedirectResult, type User as FirebaseUser } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { Separator } from "@/components/ui/separator";
 import { doc, getDoc } from "firebase/firestore";
@@ -52,14 +52,78 @@ export function LoginForm() {
     },
   });
 
-  const handleSuccessfulLogin = async (user: FirebaseUser) => {
-    const companyExists = await checkCompanyExists(user.uid);
-    if (companyExists) {
-      router.push('/dashboard'); // AuthRedirectHandler will also catch this
-    } else {
-      router.push('/register'); // Redirect to the unified registration form
+  // Effect to handle Google redirect result
+  useEffect(() => {
+    const handleAsyncRedirect = async () => {
+      // Only attempt to get redirect result if not already processing email login
+      // and if not explicitly in google loading state from button click (though page reloads)
+      if (isEmailLoading) return;
+
+      try {
+        // Check if we are in the process of a Google redirect.
+        // isGoogleLoading might be false on page load after redirect.
+        // getRedirectResult itself will determine if a redirect operation was pending.
+        const result = await getRedirectResult(auth);
+        if (result && result.user) {
+          setIsGoogleLoading(true); // Set loading true as we process the user
+          toast({
+            title: "Accesso Riuscito!",
+            description: "Accesso effettuato con Google. Verrai reindirizzato a breve.",
+          });
+          const companyExists = await checkCompanyExists(result.user.uid);
+          if (companyExists) {
+            router.push('/dashboard');
+          } else {
+            router.push('/register'); // To the unified registration form
+          }
+        }
+        // If result is null, no redirect was pending or it was already consumed.
+      } catch (error: any) {
+        console.error("Errore durante getRedirectResult:", error);
+        let errorMessage = "Errore durante l'accesso con Google. Riprova.";
+        if (error.code === "auth/account-exists-with-different-credential") {
+          errorMessage = "Un account esiste già con questa email ma con un metodo di accesso diverso.";
+        } else if (error.code === "auth/cancelled-popup-request" || error.code === "auth/popup-closed-by-user" || error.code === "auth/redirect-cancelled-by-user") {
+          errorMessage = "Processo di accesso Google interrotto o annullato.";
+        }
+        toast({
+          title: "Errore Accesso Google",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      } finally {
+        // Ensure loading is false if it was set true by this effect,
+        // or if it was true from a previous button click before redirect.
+        // This might need careful handling if multiple async operations can set it.
+         setIsGoogleLoading(false);
+      }
+    };
+
+    handleAsyncRedirect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth, router, toast]); // router and toast are stable, auth is stable.
+
+
+  const handleSuccessfulLoginRedirect = async (user: FirebaseUser) => {
+    // This function is called after a successful login (email or Google)
+    // The specific loading state (isEmailLoading/isGoogleLoading) is managed by the caller.
+    try {
+      const companyExists = await checkCompanyExists(user.uid);
+      if (companyExists) {
+        router.push('/dashboard');
+      } else {
+        router.push('/register'); 
+      }
+    } catch (error) {
+        console.error("Error in handleSuccessfulLoginRedirect: ", error);
+        toast({
+            title: "Errore Post-Accesso",
+            description: "Impossibile verificare i dati aziendali o reindirizzare.",
+            variant: "destructive",
+        });
     }
   };
+
 
   async function onEmailSubmit(data: LoginFormValues) {
     setIsEmailLoading(true);
@@ -69,9 +133,7 @@ export function LoginForm() {
         title: "Accesso Riuscito!",
         description: "Verrai reindirizzato a breve.",
       });
-      // AuthRedirectHandler will pick up the auth state change and redirect appropriately.
-      // Forcing a navigation here helps ensure it triggers if already on '/'.
-      await handleSuccessfulLogin(userCredential.user);
+      await handleSuccessfulLoginRedirect(userCredential.user);
     } catch (error: any) {
       console.error("Errore di login con email:", error);
       let errorMessage = "Credenziali non valide o utente non trovato. Riprova.";
@@ -106,29 +168,18 @@ export function LoginForm() {
     setIsGoogleLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(auth, provider);
-      toast({
-        title: "Accesso Riuscito!",
-        description: "Accesso effettuato con Google. Verrai reindirizzato a breve.",
-      });
-      await handleSuccessfulLogin(result.user);
+      await signInWithRedirect(auth, provider);
+      // After this call, the page will redirect. 
+      // The result will be handled by the useEffect hook with getRedirectResult.
+      // No further action needed here except setting loading and initiating.
     } catch (error: any) {
-      console.error("Errore di login con Google:", error);
-      let errorMessage = "Errore durante l'accesso con Google. Riprova.";
-      if (error.code === "auth/popup-closed-by-user") {
-        errorMessage = "La finestra di accesso Google è stata chiusa. Riprova.";
-      } else if (error.code === "auth/cancelled-popup-request") {
-         errorMessage = "Richiesta di accesso Google annullata.";
-      } else if (error.code === "auth/account-exists-with-different-credential") {
-        errorMessage = "Un account esiste già con questa email ma con un metodo di accesso diverso.";
-      }
+      console.error("Errore durante l'avvio di signInWithRedirect:", error);
       toast({
-        title: "Errore Accesso Google",
-        description: errorMessage,
+        title: "Errore Avvio Accesso Google",
+        description: "Impossibile avviare il processo di accesso con Google. Riprova.",
         variant: "destructive",
       });
-    } finally {
-      setIsGoogleLoading(false);
+      setIsGoogleLoading(false); // Reset loading if redirect initiation fails
     }
   };
 
@@ -197,9 +248,9 @@ export function LoginForm() {
           variant="outline" 
           className="w-full" 
           onClick={handleGoogleLogin}
-          disabled={isEmailLoading || isGoogleLoading}
+          disabled={isEmailLoading || isGoogleLoading} // Disable if any login process is active
         >
-          {isGoogleLoading ? (
+          {isGoogleLoading ? ( // Show loader if google login is in progress (either initiating redirect or processing result)
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
             <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
@@ -223,3 +274,5 @@ export function LoginForm() {
     </Card>
   );
 }
+
+    
