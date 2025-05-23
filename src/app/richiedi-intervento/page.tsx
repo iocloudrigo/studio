@@ -9,7 +9,7 @@ import type { Metadata, ResolvingMetadata } from 'next'
 
 interface CompanyInfo {
   id_azienda: string;
-  nome_azienda: string;
+  nome_azienda: string | null; // Può essere null se il nome non è valido/impostato
 }
 
 async function getCompanyInfoBySlug(slug: string): Promise<CompanyInfo | null> {
@@ -30,16 +30,13 @@ async function getCompanyInfoBySlug(slug: string): Promise<CompanyInfo | null> {
     const companyDoc = querySnapshot.docs[0];
     const companyData = companyDoc.data();
     
-    let displayName: string;
+    let displayName: string | null = null;
     const fetchedCompanyName = companyData.nome;
 
     if (typeof fetchedCompanyName === 'string' && 
         fetchedCompanyName.trim() !== '' && 
         fetchedCompanyName.trim().toLowerCase() !== 'nuova azienda') {
       displayName = fetchedCompanyName.trim();
-    } else {
-      // Fallback if 'nome' is missing, empty, not a string, or is "Nuova Azienda"
-      displayName = `Azienda (slug: ${normalizedSlug})`;
     }
 
     return {
@@ -61,21 +58,18 @@ export async function generateMetadata(
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   const companySlug = typeof searchParams.azienda === 'string' ? searchParams.azienda : undefined;
-  let pageTitle = 'Richiedi Intervento';
+  let pageTitle = 'Richiedi Intervento'; // Default title
 
   if (companySlug) {
     const companyInfo = await getCompanyInfoBySlug(companySlug);
-    if (companyInfo) {
-      // Check if it's the fallback name or a real name
-      if (companyInfo.nome_azienda.startsWith('Azienda (slug:')) {
-        pageTitle = `Richiedi Intervento | ${companyInfo.nome_azienda}`;
-      } else {
-        pageTitle = `Richiedi Intervento a ${companyInfo.nome_azienda}`;
-      }
-    } else {
+    if (companyInfo && companyInfo.nome_azienda) { // Nome azienda valido
+      pageTitle = `Richiedi Intervento a ${companyInfo.nome_azienda}`;
+    } else if (companyInfo && !companyInfo.nome_azienda) { // Azienda trovata, ma nome generico
+      pageTitle = 'Richiedi Intervento';
+    } else { // Azienda non trovata dallo slug
        pageTitle = 'Azienda Non Trovata - Richiedi Intervento';
     }
-  } else {
+  } else { // Slug non fornito
     pageTitle = 'Parametro Azienda Mancante - Richiedi Intervento';
   }
 
@@ -88,15 +82,10 @@ export default async function RichiediInterventoPage({
   searchParams,
 }: Props) {
   const companySlug = typeof searchParams.azienda === 'string' ? searchParams.azienda : undefined;
-  let companyInfo: CompanyInfo | null = null;
-
-  if (companySlug) {
-    companyInfo = await getCompanyInfoBySlug(companySlug);
-  }
-
+  
   if (!companySlug) {
     return (
-      <PublicLayout>
+      <PublicLayout companyName="Richiesta Intervento">
         <Card className="max-w-2xl mx-auto shadow-lg">
           <CardHeader>
             <CardTitle className="text-center text-destructive flex items-center justify-center">
@@ -113,9 +102,11 @@ export default async function RichiediInterventoPage({
     );
   }
 
+  const companyInfo = await getCompanyInfoBySlug(companySlug);
+
   if (!companyInfo) {
     return (
-      <PublicLayout companyName={`Azienda Non Trovata (slug: ${companySlug})`}>
+      <PublicLayout companyName="Richiesta Intervento">
         <Card className="max-w-2xl mx-auto shadow-lg">
           <CardHeader>
             <CardTitle className="text-center text-destructive flex items-center justify-center">
@@ -124,8 +115,7 @@ export default async function RichiediInterventoPage({
           </CardHeader>
           <CardContent className="text-center">
             <p className="text-muted-foreground">
-              L'azienda con slug "{companySlug}" non è stata trovata nel nostro sistema.
-              Verifica che lo slug sia corretto o contatta l'assistenza.
+              L'azienda specificata non è stata trovata. Verifica che l'URL sia corretto o contatta l'assistenza.
             </p>
           </CardContent>
         </Card>
@@ -133,11 +123,16 @@ export default async function RichiediInterventoPage({
     );
   }
 
+  // Se companyInfo.nome_azienda è null, useremo un testo generico.
+  // Altrimenti, useremo il nome reale dell'azienda.
+  const layoutHeaderName = companyInfo.nome_azienda || "Richiesta Intervento";
+  const formTargetDisplayName = companyInfo.nome_azienda || "la tua azienda di fiducia";
+
   return (
-    <PublicLayout companyName={companyInfo.nome_azienda}>
+    <PublicLayout companyName={layoutHeaderName}>
       <RichiediInterventoForm
         id_azienda={companyInfo.id_azienda}
-        companyDisplayName={companyInfo.nome_azienda}
+        companyDisplayName={formTargetDisplayName}
       />
     </PublicLayout>
   );
