@@ -17,6 +17,13 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Briefcase, Mail, Lock } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+// Firebase imports
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 
 const RegisterFormSchema = z.object({
   companyName: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
@@ -30,8 +37,21 @@ const RegisterFormSchema = z.object({
 
 type RegisterFormValues = z.infer<typeof RegisterFormSchema>;
 
+// Slug generation utility
+const generateSlug = (name: string): string => {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-') // Replace spaces with -
+    .replace(/[^\w-]+/g, '') // Remove all non-word chars (keeps letters, numbers, underscore, hyphen)
+    .replace(/--+/g, '-'); // Replace multiple - with single -
+};
+
 export function RegisterForm() {
   const { toast } = useToast();
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(RegisterFormSchema),
     defaultValues: {
@@ -42,13 +62,66 @@ export function RegisterForm() {
     },
   });
 
-  function onSubmit(data: RegisterFormValues) {
-    console.log(data);
-    // TODO: Implement actual registration logic
-    toast({
-      title: "Registrazione Tentata",
-      description: "Dati inviati: " + JSON.stringify(data),
-    });
+  async function onSubmit(data: RegisterFormValues) {
+    setIsLoading(true);
+    try {
+      // 1. Create user with Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      const user = userCredential.user;
+
+      if (user) {
+        // 2. Create document in Firestore
+        const companySlug = generateSlug(data.companyName);
+        // Use user.uid as the document ID for the 'aziende' collection
+        const companyDocRef = doc(db, "aziende", user.uid); 
+
+        await setDoc(companyDocRef, {
+          nome: data.companyName,
+          slug: companySlug,
+          email_admin: user.email,
+          uid_admin: user.uid,
+          data_creazione: serverTimestamp(),
+        });
+        
+        toast({
+          title: "Registrazione Completata!",
+          description: "Account creato con successo. Verrai reindirizzato alla dashboard.",
+        });
+
+        // 3. Redirect to dashboard
+        router.push('/dashboard');
+
+      } else {
+        // This case should ideally not be reached if createUserWithEmailAndPassword succeeds
+        throw new Error("Creazione utente fallita inaspettatamente.");
+      }
+
+    } catch (error: any) {
+      console.error("Errore di registrazione:", error);
+      let errorMessage = "Errore durante la registrazione. Riprova.";
+      if (error.code) {
+        switch (error.code) {
+          case "auth/email-already-in-use":
+            errorMessage = "L'indirizzo email è già in uso.";
+            break;
+          case "auth/weak-password":
+            errorMessage = "La password è troppo debole. Deve essere di almeno 6 caratteri.";
+            break;
+          case "auth/invalid-email":
+            errorMessage = "L'indirizzo email non è valido.";
+            break;
+          default:
+            errorMessage = `Si è verificato un errore: ${error.message}`;
+        }
+      }
+      toast({
+        title: "Errore di Registrazione",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -71,7 +144,7 @@ export function RegisterForm() {
                   <FormControl>
                     <div className="relative">
                       <Briefcase className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input placeholder="Nome della tua azienda" {...field} className="pl-10" />
+                      <Input placeholder="Nome della tua azienda" {...field} className="pl-10" disabled={isLoading} />
                     </div>
                   </FormControl>
                   <FormMessage />
@@ -87,7 +160,7 @@ export function RegisterForm() {
                   <FormControl>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input type="email" placeholder="admin@azienda.com" {...field} className="pl-10" />
+                      <Input type="email" placeholder="admin@azienda.com" {...field} className="pl-10" disabled={isLoading} />
                     </div>
                   </FormControl>
                   <FormMessage />
@@ -103,7 +176,7 @@ export function RegisterForm() {
                   <FormControl>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" />
+                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" disabled={isLoading} />
                     </div>
                   </FormControl>
                   <FormMessage />
@@ -119,15 +192,15 @@ export function RegisterForm() {
                   <FormControl>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" />
+                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" disabled={isLoading} />
                     </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
-              Registrati
+            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isLoading}>
+              {isLoading ? "Registrazione in corso..." : "Registrati"}
             </Button>
           </form>
         </Form>
