@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { CalendarDays, PlusCircle, Search } from "lucide-react"; // Rimossi ExternalLink, FileText
+import { CalendarDays, PlusCircle, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,10 +17,8 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc } from "firebase/firestore";
 import { format } from 'date-fns';
 
-// Interfaccia per gli appuntamenti, assicurati che includa tutti i campi per RequestSheetData
-export interface ScheduledAppointment extends RequestSheetData { // Estende RequestSheetData
-  id_azienda: string; // Aggiunto questo campo che era mancante nella definizione ma usato
-  // Altri campi sono ereditati da RequestSheetData
+export interface ScheduledAppointment extends RequestSheetData {
+  // id_azienda, assegnato_a_tecnico_id, assegnato_a_tecnico_nome sono già in RequestSheetData
 }
 
 export default function AppointmentsPage() {
@@ -70,7 +68,7 @@ export default function AppointmentsPage() {
           const data = docSnap.data();
           return {
             id: docSnap.id,
-            id_azienda: data.id_azienda,
+            id_azienda: data.id_azienda, // Assicurati che sia qui
             customer: data.nome_cliente || "N/D",
             service: data.tipo_servizio || "N/D",
             status: data.stato || "N/D",
@@ -84,6 +82,8 @@ export default function AppointmentsPage() {
             completata_da_collaboratore_id: data.completata_da_collaboratore_id,
             completata_da_collaboratore_nome: data.completata_da_collaboratore_nome,
             data_completamento: data.data_completamento as Timestamp | undefined,
+            assegnato_a_tecnico_id: data.assegnato_a_tecnico_id, // Aggiunto
+            assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome, // Aggiunto
           } as ScheduledAppointment;
         });
         setScheduledAppointments(fetchedAppointments);
@@ -109,7 +109,6 @@ export default function AppointmentsPage() {
   }, [scheduledAppointments, searchTerm]);
 
   const handleOpenDetailsSheet = (appointment: ScheduledAppointment) => {
-    // appointment è già del tipo corretto e compatibile con RequestSheetData
     setSelectedAppointmentForSheet(appointment);
     setIsSheetOpen(true);
   };
@@ -121,14 +120,12 @@ export default function AppointmentsPage() {
       await updateDoc(requestDocRef, { stato: newStatus, ...additionalData });
       toast({ title: "Successo!", description: `Stato dell'appuntamento aggiornato a "${newStatus}".` });
       
-      // Rimuovi l'appuntamento dall'elenco se non è più "programmata"
-      // Altrimenti, aggiorna i suoi dati (incluso il nuovo stato e additionalData)
       setScheduledAppointments(prevApps =>
         prevApps
           .map(app => 
             app.id === requestId ? { ...app, status: newStatus, ...additionalData } : app
           )
-          .filter(app => app.status === "programmata") // Mantieni solo quelli ancora programmati
+          .filter(app => app.status === "programmata") 
       );
 
     } catch (error) {

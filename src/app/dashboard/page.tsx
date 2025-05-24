@@ -21,9 +21,8 @@ interface DashboardStats {
   inProgressRequests: number | null;
 }
 
-export interface RecentRequest extends RequestSheetData { // Estende RequestSheetData
-  // Eventuali campi aggiuntivi specifici per RecentRequest possono essere aggiunti qui
-  // ma la maggior parte dovrebbe essere in RequestSheetData
+export interface RecentRequest extends RequestSheetData {
+  // RequestSheetData già include id_azienda, assegnato_a_tecnico_id, assegnato_a_tecnico_nome
 }
 
 export default function DashboardPage() {
@@ -143,6 +142,7 @@ export default function DashboardPage() {
           const data = doc.data();
           return {
             id: doc.id,
+            id_azienda: data.id_azienda, // Aggiunto
             customer: data.nome_cliente || "N/D",
             service: data.tipo_servizio || "N/D",
             status: data.stato || "N/D",
@@ -156,6 +156,8 @@ export default function DashboardPage() {
             completata_da_collaboratore_id: data.completata_da_collaboratore_id,
             completata_da_collaboratore_nome: data.completata_da_collaboratore_nome,
             data_completamento: data.data_completamento as Timestamp | undefined,
+            assegnato_a_tecnico_id: data.assegnato_a_tecnico_id, // Aggiunto
+            assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome, // Aggiunto
           } as RecentRequest;
         });
         setRecentRequests(fetchedRequests);
@@ -181,14 +183,12 @@ export default function DashboardPage() {
       await updateDoc(requestDocRef, { stato: newStatus, ...additionalData });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
-      // Aggiorna lo stato locale delle richieste recenti
       setRecentRequests(prevRequests =>
         prevRequests.map(req =>
           req.id === requestId ? { ...req, status: newStatus, ...additionalData } : req
         )
       );
 
-      // Ricarica le statistiche
       if (companyId) {
         setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true }));
         try {
@@ -246,7 +246,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Link href={`/dashboard/requests?statusFilter=${encodeURIComponent("in attesa")},${encodeURIComponent("assegnata")},${encodeURIComponent("programmata")},${encodeURIComponent("in corso")}`}>
+        <Link href={`/dashboard/requests?statusFilter=${encodeURIComponent("in attesa,assegnata,programmata,in corso")}`}>
           <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Richieste Attive</CardTitle>
@@ -345,8 +345,6 @@ export default function DashboardPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => {
-                              // req è già del tipo corretto (RecentRequest)
-                              // e RecentRequest estende RequestSheetData
                               setSelectedRequest(req);
                               setIsSheetOpen(true);
                             }}

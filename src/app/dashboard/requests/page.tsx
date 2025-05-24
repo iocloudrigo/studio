@@ -27,8 +27,8 @@ import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc }
 import { format } from 'date-fns';
 
 export interface ClientRequest extends RequestSheetData { 
-  id_azienda: string; 
-  email_cliente?: string; // Aggiunto per il filtro searchTerm
+  // id_azienda è già in RequestSheetData
+  // assegnato_a_tecnico_id e assegnato_a_tecnico_nome sono già in RequestSheetData
 }
 
 const ALL_STATUSES = ["in attesa", "assegnata", "programmata", "in corso", "completata", "annullata"];
@@ -105,7 +105,7 @@ export default function AllRequestsPage() {
           const data = docSnap.data();
           return {
             id: docSnap.id,
-            id_azienda: data.id_azienda,
+            id_azienda: data.id_azienda, // Assicurati che sia qui
             customer: data.nome_cliente || "N/D", 
             service: data.tipo_servizio || "N/D", 
             status: data.stato || "N/D", 
@@ -119,6 +119,8 @@ export default function AllRequestsPage() {
             completata_da_collaboratore_id: data.completata_da_collaboratore_id,
             completata_da_collaboratore_nome: data.completata_da_collaboratore_nome,
             data_completamento: data.data_completamento as Timestamp | undefined,
+            assegnato_a_tecnico_id: data.assegnato_a_tecnico_id, // Aggiunto
+            assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome, // Aggiunto
           } as ClientRequest;
         });
         setAllRequests(fetchedRequests);
@@ -145,7 +147,7 @@ export default function AllRequestsPage() {
       const matchesSearch = searchTermLower === "" ||
         req.id.toLowerCase().includes(searchTermLower) ||
         req.customer.toLowerCase().includes(searchTermLower) || 
-        (req.email_cliente && req.email_cliente.toLowerCase().includes(searchTermLower)) || // Cerca anche per email cliente
+        (req.email_cliente && req.email_cliente.toLowerCase().includes(searchTermLower)) || 
         req.service.toLowerCase().includes(searchTermLower); 
 
       const matchesStatus = activeStatusFilters.length === 0 || activeStatusFilters.includes(req.status); 
@@ -322,3 +324,5 @@ export default function AllRequestsPage() {
     </div>
   );
 }
+
+    
