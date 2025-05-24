@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail, Lock, Loader2, Briefcase, Link as LinkIcon, Building, Phone, UserCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { createUserWithEmailAndPassword, type User as FirebaseUser } from "firebase/auth";
+import { createUserWithEmailAndPassword, updateProfile, type User as FirebaseUser } from "firebase/auth";
 import { doc, setDoc, serverTimestamp, getDocs, collection, query, where, addDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
@@ -31,16 +31,16 @@ const generateSlug = (name: string): string => {
   return name
     .toLowerCase()
     .trim()
-    .replace(/\s+/g, '-') 
-    .replace(/[^\w-]+/g, '') 
-    .replace(/--+/g, '-'); 
+    .replace(/\s+/g, '-')
+    .replace(/[^\w-]+/g, '')
+    .replace(/--+/g, '-');
 };
 
 const unifiedRegisterFormSchema = z.object({
-  adminName: z.string().min(2, { message: "Il nome dell'amministratore è richiesto." }), // Nome per il profilo utente
+  adminName: z.string().min(2, { message: "Il nome dell'amministratore è richiesto." }),
   email: z.string().email({ message: "Indirizzo email non valido." }),
-  password: z.string().min(6, { message: "La password deve contenere almeno 6 caratteri." }),
-  confirmPassword: z.string(),
+  password: z.string().optional(), // Opzionale perché può essere pre-autenticato
+  confirmPassword: z.string().optional(),
   companyName: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
   slug: z.string()
     .min(1, { message: "Lo slug è richiesto." })
@@ -49,10 +49,27 @@ const unifiedRegisterFormSchema = z.object({
   companyPhone: z.string().optional(),
   activitySector: z.string().optional(),
   companyCity: z.string().optional(),
-}).refine(data => data.password === data.confirmPassword, {
-  message: "Le password non coincidono.",
-  path: ["confirmPassword"],
+}).refine(data => {
+  // La validazione della password è necessaria solo se l'utente non è pre-autenticato
+  if (!data.password && !data.confirmPassword) return true; // Se non ci sono password, va bene
+  if (data.password && data.password.length < 6) {
+    // Questo errore dovrebbe essere gestito a livello di campo, ma lo mettiamo qui per sicurezza
+    return false; // Password troppo corta
+  }
+  return data.password === data.confirmPassword;
+}, {
+  message: "Le password non coincidono o la nuova password è troppo corta (min. 6 caratteri).",
+  path: ["confirmPassword"], // O path: ["password"] se preferisci l'errore sulla prima
+}).refine(data => {
+  // Se password è fornita, confirmPassword deve esserlo anche
+  if (data.password && !data.confirmPassword) return false;
+  if (!data.password && data.confirmPassword) return false; // Meno probabile ma per completezza
+  return true;
+}, {
+  message: "Conferma password è richiesta se la password è inserita.",
+  path: ["confirmPassword"]
 });
+
 
 type UnifiedRegisterFormValues = z.infer<typeof unifiedRegisterFormSchema>;
 
@@ -91,7 +108,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       form.reset({
         adminName: prefilledUser.displayName || "",
         email: prefilledUser.email || "",
-        password: "",
+        password: "", // Le password non vengono precompilate
         confirmPassword: "",
         companyName: "",
         slug: "",
@@ -123,26 +140,33 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
     let userEmailToUse: string | undefined = prefilledUser?.email || undefined;
     let userDisplayNameToUse: string | undefined = prefilledUser?.displayName || data.adminName;
 
+    // Validazione password specifica se non c'è un utente pre-autenticato
+    if (!prefilledUser) {
+      if (!data.password || data.password.length < 6) {
+        form.setError("password", {type: "manual", message: "La password deve contenere almeno 6 caratteri."});
+        setIsLoading(false);
+        toast({ title: "Errore Registrazione", description: "La password deve contenere almeno 6 caratteri.", variant: "destructive" });
+        return;
+      }
+      if (data.password !== data.confirmPassword) {
+        form.setError("confirmPassword", {type: "manual", message: "Le password non coincidono."});
+        setIsLoading(false);
+        toast({ title: "Errore Registrazione", description: "Le password non coincidono.", variant: "destructive" });
+        return;
+      }
+    }
+
 
     try {
-      if (!prefilledUser) { // Solo se stiamo creando un nuovo utente email/password
+      if (!prefilledUser) {
         console.log("Attempting new user registration with email:", data.email);
-        if (!data.password) {
-          form.setError("password", {type: "manual", message: "La password è richiesta."});
-          setIsLoading(false);
-          console.error("Password field is empty for new user registration.");
-          toast({ title: "Errore Registrazione", description: "La password è richiesta.", variant: "destructive" });
-          return;
-        }
         try {
-          const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+          const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password!); // data.password è sicuro qui
           userIdToUse = userCredential.user.uid;
-          userEmailToUse = userCredential.user.email!; // Firebase Auth user email is non-null
-          userDisplayNameToUse = data.adminName; // Use adminName from form for new users
+          userEmailToUse = userCredential.user.email!;
+          userDisplayNameToUse = data.adminName;
 
-          // Update Firebase Auth Profile for new user
-          await auth.currentUser?.updateProfile({ displayName: userDisplayNameToUse });
-
+          await updateProfile(userCredential.user, { displayName: userDisplayNameToUse });
           console.log("New user created successfully with Firebase Auth:", userIdToUse);
         } catch (authError: any) {
           console.error("Errore creazione utente Firebase Auth:", authError);
@@ -150,13 +174,13 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
           if (authError.code === "auth/email-already-in-use") errorMessage = "L'indirizzo email è già in uso.";
           else if (authError.code === "auth/weak-password") errorMessage = "La password è troppo debole.";
           else if (authError.code === "auth/invalid-email") errorMessage = "L'indirizzo email non è valido.";
-          else errorMessage = `Errore Auth: ${authError.message}`;
+          else errorMessage = `Errore Auth: ${authError.message || "Errore sconosciuto"}`;
           toast({ title: "Errore Registrazione Utente", description: errorMessage, variant: "destructive" });
           setIsLoading(false);
           return;
         }
       }
-      
+
       if (!userIdToUse || !userEmailToUse) {
         console.error("User ID or Email is undefined after auth step.");
         toast({ title: "Errore Interno", description: "Impossibile ottenere i dati utente.", variant: "destructive" });
@@ -166,13 +190,11 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       console.log("User ID for Firestore:", userIdToUse, "User Email:", userEmailToUse, "User Display Name:", userDisplayNameToUse);
 
       const finalSlug = generateSlug(data.slug);
-      console.log("Normalized slug for processing:", finalSlug);
       if (finalSlug !== data.slug) {
           form.setValue("slug", finalSlug, { shouldValidate: true });
       }
 
-      const validationResult = unifiedRegisterFormSchema.safeParse({...data, slug: finalSlug}); 
-
+      const validationResult = unifiedRegisterFormSchema.safeParse({...data, slug: finalSlug});
       if (!validationResult.success) {
           console.error("Form validation failed after slug normalization:", validationResult.error.flatten().fieldErrors);
           const fieldErrors = validationResult.error.flatten().fieldErrors;
@@ -190,13 +212,13 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
 
       console.log("Querying Firestore for slug uniqueness:", finalSlug);
       const aziendeRef = collection(db, "aziende");
-      const qSlug = query(aziendeRef, where("slug", "==", finalSlug)); 
+      const qSlug = query(aziendeRef, where("slug", "==", finalSlug));
       const slugQuerySnapshot = await getDocs(qSlug);
-      
+
       let slugTakenByOther = false;
       if (!slugQuerySnapshot.empty) {
         slugQuerySnapshot.forEach(docSnap => {
-          if (docSnap.id !== userIdToUse) { // Check if slug is taken by a *different* company
+          if (docSnap.id !== userIdToUse) {
             slugTakenByOther = true;
           }
         });
@@ -228,17 +250,15 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       await setDoc(companyDocRef, companyDataToSave);
       console.log("Company data saved successfully to Firestore for document ID:", userIdToUse);
 
-      // Add admin as a collaborator
       const adminCollaboratorData = {
         id_azienda: userIdToUse,
-        nome_completo: userDisplayNameToUse, // Use the name from the form or prefilled user
+        nome_completo: userDisplayNameToUse,
         email: userEmailToUse,
         ruolo: "Amministratore",
         data_creazione: serverTimestamp(),
       };
       await addDoc(collection(db, "collaboratori_azienda"), adminCollaboratorData);
       console.log("Admin collaborator entry created for:", userEmailToUse);
-
 
       toast({
         title: "Registrazione Completata!",
@@ -255,7 +275,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false); 
+      setIsLoading(false);
     }
   };
 
@@ -271,58 +291,86 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-                control={form.control}
-                name="adminName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Il Tuo Nome e Cognome</FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <UserCircle className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input 
-                          placeholder="Mario Rossi" 
-                          {...field} 
-                          className="pl-10" 
-                          disabled={isLoading || !!prefilledUser?.displayName} 
-                        />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email Amministratore (Login)</FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input 
-                        placeholder="admin@azienda.com" 
-                        {...field} 
-                        className="pl-10" 
-                        disabled={isLoading || !!prefilledUser?.email} 
-                        readOnly={!!prefilledUser?.email}
-                      />
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Sezione Dettagli Utente */}
+            <div className={`grid grid-cols-1 ${!prefilledUser ? "md:grid-cols-2" : ""} gap-x-6 gap-y-4`}>
+              <FormField
+                  control={form.control}
+                  name="adminName"
+                  render={({ field }) => (
+                    <FormItem className={`${!prefilledUser ? "" : "md:col-span-2"}`}>
+                      <FormLabel>Il Tuo Nome e Cognome <span className="text-destructive">*</span></FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <UserCircle className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            placeholder="Mario Rossi"
+                            {...field}
+                            className="pl-10"
+                            disabled={isLoading || !!prefilledUser?.displayName}
+                          />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              {!prefilledUser && (
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email Amministratore (Login) <span className="text-destructive">*</span></FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            placeholder="admin@azienda.com"
+                            {...field}
+                            className="pl-10"
+                            disabled={isLoading}
+                          />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
-            />
+              {prefilledUser && (
+                 <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem className="md:col-span-2">
+                        <FormLabel>Email Amministratore (Login) <span className="text-destructive">*</span></FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                              {...field}
+                              className="pl-10"
+                              disabled={true} // Sempre disabilitato se prefilledUser
+                              readOnly={true}  // Sempre readonly se prefilledUser
+                            />
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+              )}
+            </div>
+
             {!prefilledUser && (
-              <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                 <FormField
                   control={form.control}
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Password</FormLabel>
+                      <FormLabel>Password <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
                         <div className="relative">
                           <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -338,7 +386,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                   name="confirmPassword"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Conferma Password</FormLabel>
+                      <FormLabel>Conferma Password <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
                         <div className="relative">
                           <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -349,14 +397,16 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                     </FormItem>
                   )}
                 />
-              </>
+              </div>
             )}
+
+            {/* Sezione Dettagli Azienda */}
             <FormField
               control={form.control}
               name="companyName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Nome Azienda</FormLabel>
+                  <FormLabel>Nome Azienda <span className="text-destructive">*</span></FormLabel>
                   <FormControl>
                     <div className="relative">
                       <Briefcase className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -372,7 +422,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
               name="slug"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Slug Pubblico Azienda</FormLabel>
+                  <FormLabel>Slug Pubblico Azienda <span className="text-destructive">*</span></FormLabel>
                   <FormControl>
                     <div className="relative">
                       <LinkIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -381,20 +431,20 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                         {...field}
                         className="pl-10"
                         disabled={isLoading}
-                        onBlur={(e) => { 
+                        onBlur={(e) => {
                             const manualSlug = generateSlug(e.target.value);
-                            if (e.target.value.trim() === "" && companyNameValue) { 
+                            if (e.target.value.trim() === "" && companyNameValue) {
                                 field.onChange(generateSlug(companyNameValue));
                                 form.trigger("slug");
                             } else if (e.target.value.trim() !== "" && e.target.value !== manualSlug) {
-                                field.onChange(manualSlug); 
-                                form.trigger("slug"); 
+                                field.onChange(manualSlug);
+                                form.trigger("slug");
                             }
-                            setIsSlugManuallyEdited(true); 
-                            field.onBlur(); 
+                            setIsSlugManuallyEdited(true);
+                            field.onBlur();
                         }}
                         onChange={(e) => {
-                            field.onChange(e.target.value); 
+                            field.onChange(e.target.value);
                             if (!isSlugManuallyEdited && e.target.value !== generateSlug(companyNameValue) ) {
                                 setIsSlugManuallyEdited(true);
                             }
@@ -413,53 +463,57 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="companyPhone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Telefono Contatto Aziendale <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input type="tel" placeholder="Es: 021234567" {...field} className="pl-10" disabled={isLoading} value={field.value || ""} />
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="activitySector"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Settore Attività <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
-                  <Select 
-                    onValueChange={field.onChange} 
-                    value={field.value || "unspecified"} 
-                    disabled={isLoading}
-                  >
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+              <FormField
+                control={form.control}
+                name="companyPhone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Telefono Contatto Aziendale <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
                     <FormControl>
-                        <div className="relative">
-                            <Briefcase className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <SelectTrigger className="pl-10">
-                                <SelectValue placeholder="Seleziona un settore..." />
-                            </SelectTrigger>
-                        </div>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input type="tel" placeholder="Es: 021234567" {...field} className="pl-10" disabled={isLoading} value={field.value || ""} />
+                      </div>
                     </FormControl>
-                    <SelectContent>
-                      {activitySectorOptions.map(option => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="activitySector"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Settore Attività <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value || "unspecified"}
+                      disabled={isLoading}
+                    >
+                      <FormControl>
+                          <div className="relative">
+                              <Briefcase className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <SelectTrigger className="pl-10">
+                                  <SelectValue placeholder="Seleziona un settore..." />
+                              </SelectTrigger>
+                          </div>
+                      </FormControl>
+                      <SelectContent>
+                        {activitySectorOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
             <FormField
               control={form.control}
               name="companyCity"
@@ -495,5 +549,3 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
     </Card>
   );
 }
-
-    
