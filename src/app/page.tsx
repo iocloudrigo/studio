@@ -52,6 +52,7 @@ export default function LandingPage() {
       href: "/register",
       highlight: false,
       savingNote: null,
+      microCopy: "Paghi solo un mese alla volta, senza vincoli",
     },
     {
       name: "Annuale",
@@ -63,6 +64,7 @@ export default function LandingPage() {
       href: "/register",
       highlight: true,
       savingNote: "Risparmia 2 mesi!",
+      microCopy: "Più tempo per lavorare, meno per gestire",
     },
   ];
 
@@ -328,6 +330,9 @@ export default function LandingPage() {
                   <Button asChild className={`w-full mt-auto ${plan.highlight ? 'bg-primary hover:bg-primary/90 text-primary-foreground' : 'bg-accent hover:bg-accent/90 text-accent-foreground'}`}>
                     <Link href={plan.href}>{plan.cta}</Link>
                   </Button>
+                  {plan.microCopy && (
+                    <p className="mt-4 text-xs text-center text-muted-foreground">{plan.microCopy}</p>
+                  )}
                 </div>
               ))}
             </div>
