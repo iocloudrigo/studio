@@ -223,11 +223,11 @@ export default function LandingPage() {
             </div>
             <Accordion type="single" collapsible className="w-full max-w-2xl mx-auto">
               {faqItems.map((item) => (
-                <AccordionItem value={item.id} key={item.id}>
-                  <AccordionTrigger className="text-lg font-semibold text-left hover:no-underline">
+                <AccordionItem value={item.id} key={item.id} className="border border-border rounded-md mb-3 shadow-sm bg-card">
+                  <AccordionTrigger className="text-lg font-semibold text-left hover:no-underline px-6 py-4">
                     {item.question}
                   </AccordionTrigger>
-                  <AccordionContent className="text-base text-muted-foreground leading-relaxed pt-2 pb-4">
+                  <AccordionContent className="text-base text-muted-foreground leading-relaxed pt-0 pb-4 px-6">
                     {item.answer}
                   </AccordionContent>
                 </AccordionItem>
