@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Contact, PlusCircle, Search, Edit, Trash2, Loader2, Check } from "lucide-react"; // Aggiunta Check
+import { Contact, PlusCircle, Search, Edit, Trash2, Loader2, Check, Sparkles } from "lucide-react"; 
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +23,7 @@ export interface Cliente {
   indirizzo?: string;
   note_interne?: string;
   data_creazione: Timestamp;
+  creato_automaticamente?: boolean; // NUOVO CAMPO
 }
 
 export default function ClientsPage() {
@@ -76,6 +77,7 @@ export default function ClientsPage() {
           indirizzo: data.indirizzo,
           note_interne: data.note_interne,
           data_creazione: data.data_creazione as Timestamp,
+          creato_automaticamente: data.creato_automaticamente === true, // NUOVO CAMPO
         } as Cliente;
       });
       setClients(fetchedClients);
@@ -111,6 +113,7 @@ export default function ClientsPage() {
     if (!companyId) return;
     try {
       const clientDocRef = doc(db, "clienti", clientId);
+      // Non aggiorniamo creato_automaticamente qui, è un flag di creazione
       await updateDoc(clientDocRef, {
         ...data,
         email: data.email || null,
@@ -119,7 +122,7 @@ export default function ClientsPage() {
         note_interne: data.note_interne || null,
       });
       toast({ title: "Successo!", description: "Cliente aggiornato con successo." });
-      if (companyId) fetchClients(companyId); // Re-fetch clients to update the list
+      if (companyId) fetchClients(companyId); 
     } catch (error) {
       console.error("Error updating client:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare il cliente.", variant: "destructive" });
@@ -133,7 +136,7 @@ export default function ClientsPage() {
       const clientDocRef = doc(db, "clienti", clientId);
       await deleteDoc(clientDocRef);
       toast({ title: "Successo!", description: "Cliente eliminato con successo." });
-      if (companyId) fetchClients(companyId); // Re-fetch clients
+      if (companyId) fetchClients(companyId); 
     } catch (error) {
       console.error("Error deleting client:", error);
       toast({ title: "Errore Eliminazione", description: "Impossibile eliminare il cliente.", variant: "destructive" });
@@ -184,7 +187,8 @@ export default function ClientsPage() {
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Nome Completo</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Email</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Telefono</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Note Interne</th>
+                      <th className="p-3 text-center text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Note</th>
+                      <th className="p-3 text-center text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Auto</th>
                       <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
                     </tr>
                   </thead>
@@ -196,7 +200,14 @@ export default function ClientsPage() {
                         <td className="p-3 text-sm whitespace-nowrap">{client.telefono || "N/D"}</td>
                         <td className="p-3 text-sm whitespace-nowrap text-center">
                           {client.note_interne && client.note_interne.trim() !== "" ? (
-                            <Check className="h-5 w-5 text-green-500 mx-auto" />
+                            <Check className="h-5 w-5 text-green-500 mx-auto" title="Note presenti"/>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-sm whitespace-nowrap text-center">
+                          {client.creato_automaticamente ? (
+                            <Sparkles className="h-5 w-5 text-accent mx-auto" title="Creato automaticamente"/>
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
@@ -234,4 +245,3 @@ export default function ClientsPage() {
     </div>
   );
 }
-

@@ -86,6 +86,7 @@ export default function NewClientPage() {
         indirizzo: data.indirizzo || null,
         note_interne: data.note_interne || null,
         data_creazione: serverTimestamp(),
+        creato_automaticamente: false, // NUOVO CAMPO
       };
 
       await addDoc(collection(db, "clienti"), docData);
@@ -108,7 +109,7 @@ export default function NewClientPage() {
     }
   }
 
-  if (!currentUser && !companyId) { // Mostra loader finché non si sa se l'utente è loggato
+  if (!currentUser && !companyId) { 
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
