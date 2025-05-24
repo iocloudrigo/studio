@@ -29,6 +29,7 @@ import {
   ChevronDown,
   ChevronUp,
   LogOut, // Added LogOut icon
+  Archive, // Aggiunta icona Archive
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useState, useEffect } from "react";
@@ -46,6 +47,7 @@ const navItems = [
       { href: "/dashboard/requests", label: "Tutte le Richieste", icon: FileText },
       { href: "/dashboard/requests/new", label: "Nuova Richiesta", icon: MessageSquarePlus },
       { href: "/dashboard/requests/suggestions", label: "Suggerimenti AI", icon: Lightbulb },
+      { href: "/dashboard/requests?statusFilter=completata", label: "Archiviate", icon: Archive }, // Voce Archiviate
     ]
   },
   { href: "/dashboard/appointments", label: "Appuntamenti", icon: CalendarDays },
@@ -115,7 +117,7 @@ export function AppSidebar() {
                     className={cn(
                       "flex w-full items-center justify-between gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                       sidebarState === "collapsed" && "!size-8 !p-2",
-                      item.subItems.some(sub => pathname.startsWith(sub.href)) && "bg-sidebar-accent text-sidebar-accent-foreground"
+                      item.subItems.some(sub => pathname === sub.href || (pathname === '/dashboard/requests' && sub.href.startsWith('/dashboard/requests?statusFilter='))) && "bg-sidebar-accent text-sidebar-accent-foreground"
                     )}
                     onClick={() => toggleSubmenu(item.label)}
                     title={item.label}
@@ -133,9 +135,10 @@ export function AppSidebar() {
                         <SidebarMenuSubItem key={subItem.href}>
                           <Link href={subItem.href} legacyBehavior passHref>
                             <SidebarMenuSubButton
-                              isActive={pathname === subItem.href}
+                              isActive={pathname === subItem.href || (pathname === '/dashboard/requests' && subItem.href.startsWith('/dashboard/requests?statusFilter=') && usePathname() + (typeof window !== "undefined" ? window.location.search : "") === subItem.href)}
                               className="gap-2"
                             >
+                              <subItem.icon className="h-4 w-4 shrink-0" />
                               <span>{subItem.label}</span>
                             </SidebarMenuSubButton>
                           </Link>
