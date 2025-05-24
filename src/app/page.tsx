@@ -44,9 +44,9 @@ export default function LandingPage() {
   const pricingPlans = [
     {
       name: "Mensile",
-      price: "€ 49",
+      price: "€ 59",
       frequency: "/ mese",
-      description: "Flessibilità totale, paga mese per mese.",
+      description: "Flessibile per iniziare, ideale per chi vuole provare senza impegno.",
       features: ["Tutte le funzionalità Incastro", "Gestione completa richieste", "Supporto clienti", "Aggiornamenti inclusi"],
       cta: "Inizia con il Piano Mensile",
       href: "/register",
@@ -55,14 +55,14 @@ export default function LandingPage() {
     },
     {
       name: "Annuale",
-      price: "€ 499",
+      price: "€ 590",
       frequency: "/ anno",
-      description: "Risparmia con il pagamento annuale.",
+      description: "Il modo più intelligente per usare Incastro: risparmi tempo e denaro.",
       features: ["Tutte le funzionalità Incastro", "Gestione completa richieste", "Supporto clienti", "Aggiornamenti inclusi"],
       cta: "Scegli il Piano Annuale",
       href: "/register",
       highlight: true,
-      savingNote: "Risparmia oltre il 15%!",
+      savingNote: "Risparmia 2 mesi!",
     },
   ];
 
