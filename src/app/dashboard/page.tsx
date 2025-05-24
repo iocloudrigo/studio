@@ -9,7 +9,7 @@ import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity } from "lucid
 import { Skeleton } from "@/components/ui/skeleton"; 
 import { RequestDetailsSheet } from "@/components/dashboard/requests/RequestDetailsSheet";
 import { useToast } from "@/hooks/use-toast";
-import { ScrollArea } from "@/components/ui/scroll-area"; // Import ScrollArea
+import { ScrollArea } from "@/components/ui/scroll-area"; 
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -64,6 +64,7 @@ export default function DashboardPage() {
       } else {
         setCurrentUser(null);
         setCompanyId(null);
+        // Reset stats and requests if user logs out
         setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 });
         setRecentRequests([]);
         setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false });
@@ -89,7 +90,7 @@ export default function DashboardPage() {
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "not-in", ["completata", "annullata"]) 
+          where("stato", "not-in", ["completata", "annullata"])
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
         setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
@@ -185,23 +186,27 @@ export default function DashboardPage() {
       await updateDoc(requestDocRef, { stato: newStatus });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
+      // Update local state for recent requests
       setRecentRequests(prevRequests =>
         prevRequests.map(req =>
           req.id === requestId ? { ...req, status: newStatus } : req
         )
       );
       
+      // Refetch stats as status change can affect them
       if (companyId) {
         setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true }));
         try {
+            // Refetch Active Requests
             const activeRequestsQuery = query(
-            collection(db, "richieste_clienti"),
-            where("id_azienda", "==", companyId),
-            where("stato", "not-in", ["completata", "annullata"]) 
+              collection(db, "richieste_clienti"),
+              where("id_azienda", "==", companyId),
+              where("stato", "not-in", ["completata", "annullata"]) 
             );
             const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
             setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
 
+            // Refetch Assigned Requests
             const assignedRequestsQuery = query( 
                 collection(db, "richieste_clienti"),
                 where("id_azienda", "==", companyId),
@@ -210,6 +215,7 @@ export default function DashboardPage() {
             const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
             setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
 
+            // Refetch In Progress Requests
             const inProgressRequestsQuery = query( 
                 collection(db, "richieste_clienti"),
                 where("id_azienda", "==", companyId),
@@ -220,7 +226,7 @@ export default function DashboardPage() {
 
         } catch (error) {
             console.error("Error refetching stats after update:", error);
-            setStats(prev => ({ ...prev, activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 }));
+            // Avoid resetting all stats to 0 if one refetch fails, let previous values persist or show individual errors
         } finally {
             setLoadingStats(prev => ({ ...prev, activeRequests: false, assignedRequests: false, inProgressRequests: false }));
         }
@@ -248,6 +254,7 @@ export default function DashboardPage() {
         </Button>
       </div>
 
+      {/* Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -293,6 +300,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {/* Recent Requests Table */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Ultime Richieste</CardTitle>
@@ -306,7 +314,7 @@ export default function DashboardPage() {
               <Skeleton className="h-8 w-full" />
             </div>
           ) : recentRequests.length > 0 ? (
-            <ScrollArea className="h-[380px] w-full"> {/* Increased height */}
+            <ScrollArea className="h-[380px] w-full">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -364,6 +372,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
+      {/* Other Dashboard Sections */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg">
           <CardHeader>
@@ -400,3 +409,4 @@ export default function DashboardPage() {
   );
 }
 
+    
