@@ -15,9 +15,9 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getCountFromServer, getDocs, orderBy, limit, Timestamp, doc, updateDoc } from "firebase/firestore";
 
 interface DashboardStats {
-  activeRequests: number;
-  pendingAppointments: number;
-  techniciansAvailable: number;
+  activeRequests: number | null; // Null se errore o non caricato
+  pendingAppointments: number | null;
+  techniciansAvailable: number | null;
 }
 
 // Export this interface to be used by RequestDetailsSheet
@@ -40,13 +40,17 @@ export default function DashboardPage() {
   const { toast } = useToast();
 
   const [stats, setStats] = useState<DashboardStats>({
-    activeRequests: 0,
-    pendingAppointments: 0,
-    techniciansAvailable: 0,
+    activeRequests: null,
+    pendingAppointments: null,
+    techniciansAvailable: null,
   });
   const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([]);
   
-  const [loadingStats, setLoadingStats] = useState(true);
+  const [loadingStats, setLoadingStats] = useState({
+    activeRequests: true,
+    pendingAppointments: true,
+    techniciansAvailable: true,
+  });
   const [loadingRequests, setLoadingRequests] = useState(true);
 
   // State for the RequestDetailsSheet
@@ -61,10 +65,9 @@ export default function DashboardPage() {
       } else {
         setCurrentUser(null);
         setCompanyId(null);
-        // Optionally clear data or redirect if unauthenticated
         setStats({ activeRequests: 0, pendingAppointments: 0, techniciansAvailable: 0 });
         setRecentRequests([]);
-        setLoadingStats(false);
+        setLoadingStats({ activeRequests: false, pendingAppointments: false, techniciansAvailable: false });
         setLoadingRequests(false);
       }
     });
@@ -73,7 +76,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!companyId) {
-      setLoadingStats(false); 
+      setLoadingStats({ activeRequests: false, pendingAppointments: false, techniciansAvailable: false });
       setLoadingRequests(false);
       setStats({ activeRequests: 0, pendingAppointments: 0, techniciansAvailable: 0 });
       setRecentRequests([]);
@@ -81,19 +84,27 @@ export default function DashboardPage() {
     }
 
     const fetchDashboardData = async () => {
-      setLoadingStats(true);
-      setLoadingRequests(true);
-
-      // Fetch Stats
+      // Fetch Active Requests
+      setLoadingStats(prev => ({ ...prev, activeRequests: true }));
       try {
-        // Query for active requests: stato == "In Attesa"
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "==", "In Attesa") // Case-sensitive match
+          where("stato", "==", "In Attesa") // Case-sensitive match for "In Attesa"
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
+        setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
+      } catch (error) {
+        console.error("Error fetching active requests stats:", error);
+        toast({ title: "Errore Richieste Attive", description: "Impossibile caricare il conteggio delle richieste attive.", variant: "destructive" });
+        setStats(prev => ({ ...prev, activeRequests: 0 }));
+      } finally {
+        setLoadingStats(prev => ({ ...prev, activeRequests: false }));
+      }
 
+      // Fetch Pending Appointments
+      setLoadingStats(prev => ({ ...prev, pendingAppointments: true }));
+      try {
         const now = Timestamp.now();
         const pendingAppointmentsQuery = query(
           collection(db, "interventi_confermati"),
@@ -101,27 +112,34 @@ export default function DashboardPage() {
           where("data_ora", ">", now) 
         );
         const pendingAppointmentsSnap = await getCountFromServer(pendingAppointmentsQuery);
-
+        setStats(prev => ({ ...prev, pendingAppointments: pendingAppointmentsSnap.data().count }));
+      } catch (error) {
+        console.error("Error fetching pending appointments stats:", error);
+        toast({ title: "Errore Appuntamenti Futuri", description: "Impossibile caricare il conteggio degli appuntamenti.", variant: "destructive" });
+        setStats(prev => ({ ...prev, pendingAppointments: 0 }));
+      } finally {
+        setLoadingStats(prev => ({ ...prev, pendingAppointments: false }));
+      }
+      
+      // Fetch Technicians Available
+      setLoadingStats(prev => ({ ...prev, techniciansAvailable: true }));
+      try {
         const techniciansQuery = query(
           collection(db, "tecnici"),
           where("id_azienda", "==", companyId)
         );
         const techniciansSnap = await getCountFromServer(techniciansQuery);
-
-        setStats({
-          activeRequests: activeRequestsSnap.data().count,
-          pendingAppointments: pendingAppointmentsSnap.data().count,
-          techniciansAvailable: techniciansSnap.data().count,
-        });
+        setStats(prev => ({ ...prev, techniciansAvailable: techniciansSnap.data().count }));
       } catch (error) {
-        console.error("Error fetching dashboard stats:", error);
-        toast({ title: "Errore Dati Dashboard", description: "Impossibile caricare le statistiche.", variant: "destructive" });
-        setStats({ activeRequests: 0, pendingAppointments: 0, techniciansAvailable: 0 }); 
+        console.error("Error fetching technicians stats:", error);
+        toast({ title: "Errore Tecnici Disponibili", description: "Impossibile caricare il conteggio dei tecnici.", variant: "destructive" });
+        setStats(prev => ({ ...prev, techniciansAvailable: 0 }));
       } finally {
-        setLoadingStats(false);
+        setLoadingStats(prev => ({ ...prev, techniciansAvailable: false }));
       }
 
-      // Fetch Recent Requests
+      // Fetch Recent Requests (Table)
+      setLoadingRequests(true);
       try {
         const requestsQuery = query(
           collection(db, "richieste_clienti"),
@@ -136,7 +154,7 @@ export default function DashboardPage() {
             id: doc.id,
             customer: data.nome_cliente || "N/D", 
             service: data.tipo_servizio || "N/D", 
-            status: data.stato || "N/D", // Make sure 'stato' field exists
+            status: data.stato || "N/D", 
             created_at: data.created_at as Timestamp | undefined,
             note_aggiuntive: data.note_aggiuntive || "",
             indirizzo_intervento: data.indirizzo_intervento || "",
@@ -168,21 +186,30 @@ export default function DashboardPage() {
       await updateDoc(requestDocRef, { stato: newStatus });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
-      // Optimistically update local state for recent requests
       setRecentRequests(prevRequests =>
         prevRequests.map(req =>
           req.id === requestId ? { ...req, status: newStatus } : req
         )
       );
       
-      // Refetch stats to update the "Active Requests" count accurately from server
-      const activeRequestsQuery = query(
-        collection(db, "richieste_clienti"),
-        where("id_azienda", "==", companyId),
-        where("stato", "==", "In Attesa") // Consistent with initial fetch
-      );
-      const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
-      setStats(prevStats => ({...prevStats, activeRequests: activeRequestsSnap.data().count }));
+      // Refetch active requests count
+      if (companyId) {
+        setLoadingStats(prev => ({ ...prev, activeRequests: true }));
+        try {
+            const activeRequestsQuery = query(
+            collection(db, "richieste_clienti"),
+            where("id_azienda", "==", companyId),
+            where("stato", "==", "In Attesa") 
+            );
+            const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
+            setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
+        } catch (error) {
+            console.error("Error refetching active requests stats:", error);
+            setStats(prev => ({ ...prev, activeRequests: 0 }));
+        } finally {
+            setLoadingStats(prev => ({ ...prev, activeRequests: false }));
+        }
+      }
 
     } catch (error) {
       console.error("Error updating request status:", error);
@@ -214,10 +241,10 @@ export default function DashboardPage() {
             <FileText className="h-5 w-5 text-primary" />
           </CardHeader>
           <CardContent>
-            {loadingStats ? (
+            {loadingStats.activeRequests ? (
               <Skeleton className="h-7 w-1/4" />
             ) : (
-              <div className="text-2xl font-bold">{stats.activeRequests}</div>
+              <div className="text-2xl font-bold">{stats.activeRequests ?? 0}</div>
             )}
             <p className="text-xs text-muted-foreground">Richieste con stato "In Attesa"</p>
           </CardContent>
@@ -228,10 +255,10 @@ export default function DashboardPage() {
             <CalendarDays className="h-5 w-5 text-primary" />
           </CardHeader>
           <CardContent>
-            {loadingStats ? (
+            {loadingStats.pendingAppointments ? (
               <Skeleton className="h-7 w-1/4" />
             ) : (
-              <div className="text-2xl font-bold">{stats.pendingAppointments}</div>
+              <div className="text-2xl font-bold">{stats.pendingAppointments ?? 0}</div>
             )}
             <p className="text-xs text-muted-foreground">Interventi programmati</p>
           </CardContent>
@@ -242,10 +269,10 @@ export default function DashboardPage() {
             <Users className="h-5 w-5 text-primary" />
           </CardHeader>
           <CardContent>
-            {loadingStats ? (
+            {loadingStats.techniciansAvailable ? (
               <Skeleton className="h-7 w-1/4" />
             ) : (
-              <div className="text-2xl font-bold">{stats.techniciansAvailable}</div>
+              <div className="text-2xl font-bold">{stats.techniciansAvailable ?? 0}</div>
             )}
             <p className="text-xs text-muted-foreground">Tecnici associati all'azienda</p>
           </CardContent>
@@ -287,7 +314,7 @@ export default function DashboardPage() {
                         <span className={`px-2 py-1 text-xs rounded-full capitalize ${
                           req.status === "completata" ? "bg-green-100 text-green-700" :
                           req.status === "assegnata" ? "bg-blue-100 text-blue-700" :
-                          req.status === "in attesa" || req.status === "In Attesa" ? "bg-orange-100 text-orange-700" : // Adjusted for "In Attesa"
+                          req.status === "in attesa" || req.status === "In Attesa" ? "bg-orange-100 text-orange-700" : 
                           req.status === "programmata" ? "bg-yellow-100 text-yellow-700" :
                           req.status === "in corso" ? "bg-indigo-100 text-indigo-700" :
                           req.status === "annullata" ? "bg-red-100 text-red-700" :
