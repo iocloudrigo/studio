@@ -11,12 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Users, PlusCircle, Mail, BriefcaseIcon, UploadCloud } from "lucide-react";
+import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Users, PlusCircle, Mail, BriefcaseIcon, Edit } from "lucide-react";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { auth, db, storage } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase"; // storage non è più usato qui
 import { onAuthStateChanged, updateProfile, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, setDoc, query, where, collection, getDocs, addDoc, serverTimestamp, orderBy, updateDoc } from "firebase/firestore";
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { doc, getDoc, setDoc, query, where, collection, getDocs, addDoc, serverTimestamp, orderBy, updateDoc, deleteDoc } from "firebase/firestore";
+// import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // Non più usato qui
 import { useToast } from "@/hooks/use-toast";
 import {
   Form,
@@ -34,6 +34,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CollaboratorDetailsSheet } from "@/components/dashboard/settings/CollaboratorDetailsSheet";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 
 // Zod Schemas
 const companyFormSchema = z.object({
@@ -59,13 +71,14 @@ const collaboratorFormSchema = z.object({
   email: z.string().email({ message: "Indirizzo email non valido."}),
   ruolo: z.string().min(1, { message: "Il ruolo è richiesto."}),
 });
-type CollaboratorFormValues = z.infer<typeof collaboratorFormSchema>;
+export type CollaboratorFormValues = z.infer<typeof collaboratorFormSchema>; // Exported for sheet
 
-interface Collaborator {
+export interface Collaborator { // Exported for sheet
   id: string;
   nome_completo: string;
   email: string;
   ruolo: string;
+  id_azienda: string; // Necessario per le regole Firestore se si fa un get diretto
 }
 
 const generateSlug = (name: string): string => {
@@ -95,10 +108,9 @@ export default function SettingsPage() {
   const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(false);
   const [isAddingCollaborator, setIsAddingCollaborator] = useState(false);
 
-  const logoFileInputRef = useRef<HTMLInputElement>(null);
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-
-
+  const [selectedCollaboratorForSheet, setSelectedCollaboratorForSheet] = useState<Collaborator | null>(null);
+  const [isCollaboratorSheetOpen, setIsCollaboratorSheetOpen] = useState(false);
+  
   const companyForm = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
     defaultValues: {
@@ -318,7 +330,7 @@ export default function SettingsPage() {
       await addDoc(collection(db, "collaboratori_azienda"), collaboratorData);
       toast({ title: "Successo!", description: "Nuovo collaboratore aggiunto." });
       collaboratorForm.reset();
-      fetchCollaborators(companyId); 
+      if (companyId) fetchCollaborators(companyId); 
     } catch (error: any) {
       console.error("Errore aggiunta collaboratore:", error);
       toast({ title: "Errore Aggiunta", description: error.message || "Impossibile aggiungere il collaboratore.", variant: "destructive" });
@@ -326,6 +338,39 @@ export default function SettingsPage() {
       setIsAddingCollaborator(false);
     }
   }
+
+  const handleOpenCollaboratorSheet = (collaborator: Collaborator) => {
+    setSelectedCollaboratorForSheet(collaborator);
+    setIsCollaboratorSheetOpen(true);
+  };
+
+  const handleUpdateCollaborator = async (collaboratorId: string, data: { nome_completo: string; ruolo: string }) => {
+    if (!companyId) return;
+    try {
+      const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
+      await updateDoc(collaboratorDocRef, data);
+      toast({ title: "Successo!", description: "Collaboratore aggiornato."});
+      fetchCollaborators(companyId);
+    } catch (error: any) {
+      console.error("Errore aggiornamento collaboratore:", error);
+      toast({ title: "Errore Aggiornamento", description: error.message || "Impossibile aggiornare il collaboratore.", variant: "destructive" });
+      throw error; // Re-throw per gestione nello sheet
+    }
+  };
+  
+  const handleDeleteCollaborator = async (collaboratorId: string) => {
+    if (!companyId) return;
+    try {
+      const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
+      await deleteDoc(collaboratorDocRef);
+      toast({ title: "Successo!", description: "Collaboratore eliminato."});
+      fetchCollaborators(companyId);
+    } catch (error: any) {
+      console.error("Errore eliminazione collaboratore:", error);
+      toast({ title: "Errore Eliminazione", description: error.message || "Impossibile eliminare il collaboratore.", variant: "destructive" });
+      throw error; // Re-throw per gestione nello sheet
+    }
+  };
 
 
   if (loadingData) {
@@ -637,7 +682,12 @@ export default function SettingsPage() {
                           <p className="text-xs text-muted-foreground">{collab.email}</p>
                         </div>
                       </div>
-                      <span className="text-sm bg-secondary text-secondary-foreground px-2 py-1 rounded-full">{collab.ruolo}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm bg-secondary text-secondary-foreground px-2 py-1 rounded-full">{collab.ruolo}</span>
+                        <Button variant="outline" size="sm" onClick={() => handleOpenCollaboratorSheet(collab)}>
+                           <Edit className="mr-1 h-3 w-3" /> Dettagli
+                        </Button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -693,6 +743,17 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      
+      {selectedCollaboratorForSheet && (
+        <CollaboratorDetailsSheet
+          isOpen={isCollaboratorSheetOpen}
+          onOpenChange={setIsCollaboratorSheetOpen}
+          collaborator={selectedCollaboratorForSheet}
+          onUpdateCollaborator={handleUpdateCollaborator}
+          onDeleteCollaborator={handleDeleteCollaborator}
+        />
+      )}
     </div>
   );
 }
+
