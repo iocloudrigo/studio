@@ -11,10 +11,10 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Users, PlusCircle, Mail, BriefcaseIcon, Edit } from "lucide-react";
+import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Users, PlusCircle, Mail, BriefcaseIcon, Edit, KeyRound, LogOut } from "lucide-react";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged, updateProfile, type User as FirebaseUser } from "firebase/auth";
+import { auth, db, storage } from "@/lib/firebase";
+import { onAuthStateChanged, updateProfile, type User as FirebaseUser, updateEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { doc, getDoc, setDoc, query, where, collection, getDocs, addDoc, serverTimestamp, orderBy, updateDoc, deleteDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -33,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CollaboratorDetailsSheet, type CollaboratorEditFormValues } from "@/components/dashboard/settings/CollaboratorDetailsSheet"; // Importa CollaboratorEditFormValues
+import { CollaboratorDetailsSheet, type CollaboratorEditFormValues } from "@/components/dashboard/settings/CollaboratorDetailsSheet";
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -46,7 +46,6 @@ import {
 } from "@/components/ui/alert-dialog";
 
 
-// Zod Schemas
 const companyFormSchema = z.object({
   nome: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
   email_contatto: z.string().email({ message: "Indirizzo email non valido." }).optional().or(z.literal("")),
@@ -62,6 +61,23 @@ type CompanyFormValues = z.infer<typeof companyFormSchema>;
 
 const profileFormSchema = z.object({
   displayName: z.string().min(2, { message: "Il nome deve contenere almeno 2 caratteri." }),
+  email: z.string().email({ message: "Indirizzo email non valido." }),
+  newPassword: z.string().optional(),
+  confirmNewPassword: z.string().optional(),
+}).refine(data => {
+  if (data.newPassword && !data.confirmNewPassword) {
+    return false; // Richiede conferma se la nuova password è inserita
+  }
+  if (data.newPassword && data.newPassword !== data.confirmNewPassword) {
+    return false; // Le password devono coincidere
+  }
+  if (data.newPassword && data.newPassword.length < 6) {
+    return false; // Lunghezza minima password
+  }
+  return true;
+}, {
+  message: "Le password non coincidono o la nuova password è troppo corta (min. 6 caratteri).",
+  path: ["confirmNewPassword"], 
 });
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
@@ -126,6 +142,9 @@ export default function SettingsPage() {
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
       displayName: "",
+      email: "",
+      newPassword: "",
+      confirmNewPassword: "",
     },
   });
 
@@ -157,12 +176,57 @@ export default function SettingsPage() {
     }
   }, [toast]);
 
+  const ensureAdminCollaboratorExists = async (user: FirebaseUser) => {
+    if (!user || !user.uid || !user.email) return;
+
+    const adminEmail = user.email;
+    const adminName = user.displayName || "Amministratore";
+    const adminCompanyId = user.uid;
+
+    const collaboratorsRef = collection(db, "collaboratori_azienda");
+    const q = query(collaboratorsRef, where("id_azienda", "==", adminCompanyId), where("email", "==", adminEmail));
+    
+    try {
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        // Admin collaborator does not exist, create it
+        const adminCollaboratorData = {
+          id_azienda: adminCompanyId,
+          nome_completo: adminName,
+          email: adminEmail,
+          ruolo: "Amministratore",
+          data_creazione: serverTimestamp(),
+        };
+        await addDoc(collaboratorsRef, adminCollaboratorData);
+        console.log("Collaboratore amministratore creato:", adminEmail);
+        fetchCollaborators(adminCompanyId); // Refresh list
+      } else {
+        // Check if displayName needs update
+        const adminCollabDoc = querySnapshot.docs[0];
+        if (adminCollabDoc.data().nome_completo !== adminName) {
+          await updateDoc(adminCollabDoc.ref, { nome_completo: adminName });
+          console.log("Nome collaboratore amministratore aggiornato.");
+          fetchCollaborators(adminCompanyId); // Refresh list
+        }
+      }
+    } catch (error) {
+      console.error("Errore durante la verifica/creazione del collaboratore amministratore:", error);
+      toast({ title: "Errore Sincronizzazione Admin", description: "Impossibile sincronizzare l'amministratore come collaboratore.", variant: "destructive" });
+    }
+  };
+
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
         setCompanyId(user.uid);
-        profileForm.reset({ displayName: user.displayName || "" });
+        profileForm.reset({ 
+          displayName: user.displayName || "",
+          email: user.email || "",
+          newPassword: "",
+          confirmNewPassword: ""
+        });
 
         try {
           const companyDocRef = doc(db, "aziende", user.uid);
@@ -180,6 +244,8 @@ export default function SettingsPage() {
             setCompanyData(loadedCompanyData);
             companyForm.reset(loadedCompanyData);
             if (data.slug) setIsSlugManuallyEditedCompany(true);
+            
+            await ensureAdminCollaboratorExists(user); // Ensure admin is in collaborators list
             fetchCollaborators(user.uid); 
           } else {
              companyForm.reset({
@@ -200,7 +266,7 @@ export default function SettingsPage() {
       setLoadingData(false);
     });
     return () => unsubscribe();
-  }, [companyForm, profileForm, toast, fetchCollaborators]);
+  }, [companyForm, profileForm, toast, fetchCollaborators]); // Added fetchCollaborators to dependency array
 
   const companyNameValue = companyForm.watch("nome");
   const companySlugValue = companyForm.watch("slug");
@@ -262,7 +328,7 @@ export default function SettingsPage() {
         indirizzo_completo: validatedData.indirizzo_completo || null,
         slug: validatedData.slug,
         logoUrl: validatedData.logoUrl || null,
-        email_admin: currentUser.email,
+        email_admin: currentUser.email, // Mantieni email_admin originale
         uid_admin: currentUser.uid,
       };
 
@@ -293,10 +359,103 @@ export default function SettingsPage() {
       return;
     }
     setIsSavingProfile(true);
+    let profileUpdated = false;
+    let emailUpdatedInAuth = false;
+
     try {
-      await updateProfile(currentUser, { displayName: data.displayName });
-      setCurrentUser(prevUser => prevUser ? { ...prevUser, displayName: data.displayName } : null);
-      toast({ title: "Successo!", description: "Profilo aggiornato." });
+      // Update Display Name
+      if (data.displayName !== currentUser.displayName) {
+        await updateProfile(currentUser, { displayName: data.displayName });
+        setCurrentUser(prevUser => prevUser ? { ...prevUser, displayName: data.displayName } : null);
+        profileUpdated = true;
+      }
+
+      // Update Email
+      if (data.email !== currentUser.email) {
+        try {
+          await updateEmail(currentUser, data.email);
+          // Firebase Auth will update currentUser.email automatically after this.
+          // We also need to update it in our local currentUser state if we use it for display before a re-fetch.
+          setCurrentUser(prevUser => prevUser ? { ...prevUser, email: data.email } : null);
+          
+          // Update email_admin in 'aziende' collection
+          const companyDocRef = doc(db, "aziende", currentUser.uid);
+          await updateDoc(companyDocRef, { email_admin: data.email });
+          
+          profileUpdated = true;
+          emailUpdatedInAuth = true;
+        } catch (emailError: any) {
+          console.error("Errore aggiornamento email Firebase Auth:", emailError);
+          if (emailError.code === 'auth/requires-recent-login') {
+            toast({ title: "Azione Richiesta", description: "Per modificare l'email, è necessario un login recente. Prova a fare logout e login.", variant: "destructive" });
+          } else if (emailError.code === 'auth/email-already-in-use') {
+            toast({ title: "Errore Email", description: "L'indirizzo email è già in uso da un altro account.", variant: "destructive" });
+          } else {
+            toast({ title: "Errore Email", description: `Impossibile aggiornare l'email: ${emailError.message}`, variant: "destructive" });
+          }
+          setIsSavingProfile(false);
+          return; // Stop further processing if email update fails critically
+        }
+      }
+
+      // Update Password
+      if (data.newPassword) {
+        if (data.newPassword.length < 6) {
+          profileForm.setError("newPassword", { message: "La password deve contenere almeno 6 caratteri." });
+          setIsSavingProfile(false); return;
+        }
+        if (data.newPassword !== data.confirmNewPassword) {
+          profileForm.setError("confirmNewPassword", { message: "Le password non coincidono." });
+          setIsSavingProfile(false); return;
+        }
+        try {
+          await updatePassword(currentUser, data.newPassword);
+          profileUpdated = true;
+          profileForm.reset({ ...data, newPassword: "", confirmNewPassword: "" }); // Clear password fields
+        } catch (passwordError: any) {
+          console.error("Errore aggiornamento password Firebase Auth:", passwordError);
+           if (passwordError.code === 'auth/requires-recent-login') {
+            toast({ title: "Azione Richiesta", description: "Per modificare la password, è necessario un login recente. Prova a fare logout e login.", variant: "destructive" });
+          } else if (passwordError.code === 'auth/weak-password') {
+            toast({ title: "Errore Password", description: "La password è troppo debole.", variant: "destructive" });
+          } else {
+            toast({ title: "Errore Password", description: `Impossibile aggiornare la password: ${passwordError.message}`, variant: "destructive" });
+          }
+          setIsSavingProfile(false);
+          return; // Stop further processing
+        }
+      }
+
+      // Sync admin details with collaborators_azienda
+      const adminCollaboratorsRef = collection(db, "collaboratori_azienda");
+      const q = query(adminCollaboratorsRef, where("id_azienda", "==", currentUser.uid), where("email", "==", (emailUpdatedInAuth ? data.email : currentUser.email)));
+      const adminCollabSnapshot = await getDocs(q);
+
+      if (!adminCollabSnapshot.empty) {
+        const adminCollabDocRef = adminCollabSnapshot.docs[0].ref;
+        await updateDoc(adminCollabDocRef, { 
+          nome_completo: data.displayName,
+          email: data.email // update email here as well if it changed
+        });
+      } else {
+        // This case should ideally be handled by ensureAdminCollaboratorExists, but as a fallback:
+        await addDoc(adminCollaboratorsRef, {
+          id_azienda: currentUser.uid,
+          nome_completo: data.displayName,
+          email: data.email,
+          ruolo: "Amministratore",
+          data_creazione: serverTimestamp(),
+        });
+      }
+      if (companyId) fetchCollaborators(companyId);
+
+
+      if (profileUpdated) {
+        toast({ title: "Successo!", description: "Profilo aggiornato." });
+      } else {
+        toast({ title: "Info", description: "Nessuna modifica rilevata nel profilo." });
+      }
+
     } catch (error: any) {
       console.error("Errore aggiornamento profilo:", error);
       toast({ title: "Errore Aggiornamento", description: error.message || "Impossibile aggiornare il profilo.", variant: "destructive" });
@@ -345,11 +504,9 @@ export default function SettingsPage() {
 
   const handleUpdateCollaborator = async (collaboratorId: string, data: CollaboratorEditFormValues) => {
     if (!companyId) return;
-    // Non è necessario un controllo di unicità dell'email qui, in quanto già fatto a livello di DB / policy.
-    // Firebase Auth non è coinvolto, quindi il cambio email in Firestore è atomico e non richiede sincronizzazioni.
     try {
       const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
-      await updateDoc(collaboratorDocRef, data); // data ora include nome_completo, email, ruolo
+      await updateDoc(collaboratorDocRef, data); 
       toast({ title: "Successo!", description: "Collaboratore aggiornato."});
       fetchCollaborators(companyId);
     } catch (error: any) {
@@ -361,6 +518,13 @@ export default function SettingsPage() {
   
   const handleDeleteCollaborator = async (collaboratorId: string) => {
     if (!companyId) return;
+    // Prevent deleting the admin's own collaborator entry
+    const adminCollaborator = collaborators.find(c => c.email === currentUser?.email && c.ruolo === "Amministratore");
+    if (adminCollaborator && adminCollaborator.id === collaboratorId) {
+      toast({ title: "Azione non permessa", description: "L'amministratore principale non può essere eliminato da questa lista.", variant: "destructive"});
+      return;
+    }
+
     try {
       const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
       await deleteDoc(collaboratorDocRef);
@@ -392,7 +556,7 @@ export default function SettingsPage() {
       <Tabs defaultValue="company" className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-6">
           <TabsTrigger value="company"><Building className="mr-2 h-4 w-4 hidden sm:inline-block"/>Azienda</TabsTrigger>
-          <TabsTrigger value="profile"><UserCircle className="mr-2 h-4 w-4 hidden sm:inline-block"/>Profilo</TabsTrigger>
+          <TabsTrigger value="profile"><UserCircle className="mr-2 h-4 w-4 hidden sm:inline-block"/>Profilo & Utenti</TabsTrigger>
           <TabsTrigger value="notifications" disabled><Bell className="mr-2 h-4 w-4 hidden sm:inline-block"/>Notifiche</TabsTrigger>
           <TabsTrigger value="security" disabled><ShieldCheck className="mr-2 h-4 w-4 hidden sm:inline-block"/>Sicurezza</TabsTrigger>
           <TabsTrigger value="billing" disabled><CreditCard className="mr-2 h-4 w-4 hidden sm:inline-block"/>Fatturazione</TabsTrigger>
@@ -419,10 +583,8 @@ export default function SettingsPage() {
                     <Button 
                         variant="outline" 
                         type="button" 
-                        disabled // Mantenuto disabilitato come da richiesta precedente
+                        disabled 
                         onClick={() => {
-                          // La logica di upload è stata rimossa come da tua indicazione precedente
-                          // Se vuoi riattivarla, andrebbe qui o collegata a un input file
                           toast({title: "Info", description: "Funzionalità di caricamento logo (Prossimamente)."})
                         }}
                     >
@@ -565,16 +727,63 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Nome Completo (Visibile Internamente)</FormLabel>
                           <FormControl>
-                            <Input {...field} disabled={isSavingProfile} />
+                             <div className="relative">
+                                <UserCircle className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input {...field} className="pl-10" disabled={isSavingProfile} />
+                              </div>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    <div>
-                      <Label htmlFor="userEmail">Email (Login)</Label>
-                      <Input id="userEmail" type="email" value={currentUser?.email || ""} disabled />
-                    </div>
+                    <FormField
+                      control={profileForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email (Login)</FormLabel>
+                           <FormControl>
+                             <div className="relative">
+                                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input type="email" className="pl-10" {...field} disabled={isSavingProfile} />
+                              </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                     <FormField
+                      control={profileForm.control}
+                      name="newPassword"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Nuova Password (lascia vuoto per non modificare)</FormLabel>
+                           <FormControl>
+                             <div className="relative">
+                                <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input type="password" placeholder="••••••••" className="pl-10" {...field} disabled={isSavingProfile} />
+                              </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                     <FormField
+                      control={profileForm.control}
+                      name="confirmNewPassword"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Conferma Nuova Password</FormLabel>
+                           <FormControl>
+                             <div className="relative">
+                                <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input type="password" placeholder="••••••••" className="pl-10" {...field} disabled={isSavingProfile} />
+                              </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <div>
                       <Label htmlFor="userRole">Ruolo Principale</Label>
                       <Input id="userRole" value={"Amministratore Azienda"} disabled />
@@ -730,7 +939,9 @@ export default function SettingsPage() {
             <CardContent className="space-y-4 text-center h-48 flex flex-col justify-center items-center text-muted-foreground">
               <ShieldCheck className="h-12 w-12 mb-2" />
               <p>Opzioni di sicurezza avanzate in arrivo.</p>
-              <Button variant="outline" className="mt-4" type="button" disabled>Cambia Password (Prossimamente)</Button>
+               <Button variant="outline" className="mt-4" type="button" onClick={() => toast({title: "Info", description: "Funzionalità cambio password (Prossimamente). Per ora, usa il form nel profilo."})}>
+                Cambia Password (Prossimamente)
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -762,3 +973,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    

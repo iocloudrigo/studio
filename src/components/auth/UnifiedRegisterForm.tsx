@@ -19,11 +19,11 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Lock, Loader2, Briefcase, Link as LinkIcon, Building, Phone } from "lucide-react";
+import { Mail, Lock, Loader2, Briefcase, Link as LinkIcon, Building, Phone, UserCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { createUserWithEmailAndPassword, type User as FirebaseUser } from "firebase/auth";
-import { doc, setDoc, serverTimestamp, getDocs, collection, query, where } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, getDocs, collection, query, where, addDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
 const generateSlug = (name: string): string => {
@@ -37,6 +37,7 @@ const generateSlug = (name: string): string => {
 };
 
 const unifiedRegisterFormSchema = z.object({
+  adminName: z.string().min(2, { message: "Il nome dell'amministratore è richiesto." }), // Nome per il profilo utente
   email: z.string().email({ message: "Indirizzo email non valido." }),
   password: z.string().min(6, { message: "La password deve contenere almeno 6 caratteri." }),
   confirmPassword: z.string(),
@@ -64,7 +65,7 @@ const activitySectorOptions = [
   { value: "altro", label: "Altro" },
 ];
 
-export function UnifiedRegisterForm() {
+export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: FirebaseUser | null }) {
   const { toast } = useToast();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -73,7 +74,8 @@ export function UnifiedRegisterForm() {
   const form = useForm<UnifiedRegisterFormValues>({
     resolver: zodResolver(unifiedRegisterFormSchema),
     defaultValues: {
-      email: "",
+      adminName: prefilledUser?.displayName || "",
+      email: prefilledUser?.email || "",
       password: "",
       confirmPassword: "",
       companyName: "",
@@ -83,6 +85,23 @@ export function UnifiedRegisterForm() {
       companyCity: "",
     },
   });
+
+  useEffect(() => {
+    if (prefilledUser) {
+      form.reset({
+        adminName: prefilledUser.displayName || "",
+        email: prefilledUser.email || "",
+        password: "",
+        confirmPassword: "",
+        companyName: "",
+        slug: "",
+        companyPhone: "",
+        activitySector: "unspecified",
+        companyCity: "",
+      });
+    }
+  }, [prefilledUser, form]);
+
 
   const companyNameValue = form.watch("companyName");
   const slugValue = form.watch("slug");
@@ -100,33 +119,42 @@ export function UnifiedRegisterForm() {
     console.log("UnifiedRegisterForm onSubmit triggered. Data:", data);
     setIsLoading(true);
 
-    let userIdToUse: string | undefined = undefined;
-    let userEmailToUse: string | undefined = undefined;
+    let userIdToUse: string | undefined = prefilledUser?.uid;
+    let userEmailToUse: string | undefined = prefilledUser?.email || undefined;
+    let userDisplayNameToUse: string | undefined = prefilledUser?.displayName || data.adminName;
+
 
     try {
-      console.log("Attempting new user registration with email:", data.email);
-      if (!data.password) {
-        form.setError("password", {type: "manual", message: "La password è richiesta."});
-        setIsLoading(false);
-        console.error("Password field is empty for new user registration.");
-        toast({ title: "Errore Registrazione", description: "La password è richiesta.", variant: "destructive" });
-        return;
-      }
-      try {
-        const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-        userIdToUse = userCredential.user.uid;
-        userEmailToUse = userCredential.user.email!;
-        console.log("New user created successfully with Firebase Auth:", userIdToUse);
-      } catch (authError: any) {
-        console.error("Errore creazione utente Firebase Auth:", authError);
-        let errorMessage = "Errore durante la creazione dell'utente. Riprova.";
-        if (authError.code === "auth/email-already-in-use") errorMessage = "L'indirizzo email è già in uso.";
-        else if (authError.code === "auth/weak-password") errorMessage = "La password è troppo debole.";
-        else if (authError.code === "auth/invalid-email") errorMessage = "L'indirizzo email non è valido.";
-        else errorMessage = `Errore Auth: ${authError.message}`;
-        toast({ title: "Errore Registrazione Utente", description: errorMessage, variant: "destructive" });
-        setIsLoading(false);
-        return;
+      if (!prefilledUser) { // Solo se stiamo creando un nuovo utente email/password
+        console.log("Attempting new user registration with email:", data.email);
+        if (!data.password) {
+          form.setError("password", {type: "manual", message: "La password è richiesta."});
+          setIsLoading(false);
+          console.error("Password field is empty for new user registration.");
+          toast({ title: "Errore Registrazione", description: "La password è richiesta.", variant: "destructive" });
+          return;
+        }
+        try {
+          const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+          userIdToUse = userCredential.user.uid;
+          userEmailToUse = userCredential.user.email!; // Firebase Auth user email is non-null
+          userDisplayNameToUse = data.adminName; // Use adminName from form for new users
+
+          // Update Firebase Auth Profile for new user
+          await auth.currentUser?.updateProfile({ displayName: userDisplayNameToUse });
+
+          console.log("New user created successfully with Firebase Auth:", userIdToUse);
+        } catch (authError: any) {
+          console.error("Errore creazione utente Firebase Auth:", authError);
+          let errorMessage = "Errore durante la creazione dell'utente. Riprova.";
+          if (authError.code === "auth/email-already-in-use") errorMessage = "L'indirizzo email è già in uso.";
+          else if (authError.code === "auth/weak-password") errorMessage = "La password è troppo debole.";
+          else if (authError.code === "auth/invalid-email") errorMessage = "L'indirizzo email non è valido.";
+          else errorMessage = `Errore Auth: ${authError.message}`;
+          toast({ title: "Errore Registrazione Utente", description: errorMessage, variant: "destructive" });
+          setIsLoading(false);
+          return;
+        }
       }
       
       if (!userIdToUse || !userEmailToUse) {
@@ -135,7 +163,7 @@ export function UnifiedRegisterForm() {
         setIsLoading(false);
         return;
       }
-      console.log("User ID for Firestore:", userIdToUse, "User Email:", userEmailToUse);
+      console.log("User ID for Firestore:", userIdToUse, "User Email:", userEmailToUse, "User Display Name:", userDisplayNameToUse);
 
       const finalSlug = generateSlug(data.slug);
       console.log("Normalized slug for processing:", finalSlug);
@@ -162,17 +190,26 @@ export function UnifiedRegisterForm() {
 
       console.log("Querying Firestore for slug uniqueness:", finalSlug);
       const aziendeRef = collection(db, "aziende");
-      const q = query(aziendeRef, where("slug", "==", finalSlug)); 
-      const querySnapshot = await getDocs(q);
+      const qSlug = query(aziendeRef, where("slug", "==", finalSlug)); 
+      const slugQuerySnapshot = await getDocs(qSlug);
       
-      if (!querySnapshot.empty) {
+      let slugTakenByOther = false;
+      if (!slugQuerySnapshot.empty) {
+        slugQuerySnapshot.forEach(docSnap => {
+          if (docSnap.id !== userIdToUse) { // Check if slug is taken by a *different* company
+            slugTakenByOther = true;
+          }
+        });
+      }
+
+      if (slugTakenByOther) {
         console.warn("Slug conflict detected. Slug:", finalSlug, "is taken by another company.");
         form.setError("slug", { type: "manual", message: "Questo slug è già utilizzato da un'altra azienda. Scegline uno diverso." });
         toast({ title: "Errore Registrazione", description: "Lo slug scelto è già in uso.", variant: "destructive" });
         setIsLoading(false);
         return;
       }
-      console.log("Slug is unique.");
+      console.log("Slug is unique or belongs to the current user's potential company.");
 
       const companyDataToSave = {
         uid_admin: userIdToUse,
@@ -182,7 +219,7 @@ export function UnifiedRegisterForm() {
         telefono_contatto: data.companyPhone || null,
         settore_attivita: data.activitySector === "unspecified" || !data.activitySector ? null : data.activitySector,
         sede_citta: data.companyCity || null,
-        // contatore_richieste: 0, // Rimosso come da richiesta
+        contatore_richieste: 0,
         data_creazione: serverTimestamp(),
       };
 
@@ -190,6 +227,18 @@ export function UnifiedRegisterForm() {
       const companyDocRef = doc(db, "aziende", userIdToUse);
       await setDoc(companyDocRef, companyDataToSave);
       console.log("Company data saved successfully to Firestore for document ID:", userIdToUse);
+
+      // Add admin as a collaborator
+      const adminCollaboratorData = {
+        id_azienda: userIdToUse,
+        nome_completo: userDisplayNameToUse, // Use the name from the form or prefilled user
+        email: userEmailToUse,
+        ruolo: "Amministratore",
+        data_creazione: serverTimestamp(),
+      };
+      await addDoc(collection(db, "collaboratori_azienda"), adminCollaboratorData);
+      console.log("Admin collaborator entry created for:", userEmailToUse);
+
 
       toast({
         title: "Registrazione Completata!",
@@ -205,6 +254,7 @@ export function UnifiedRegisterForm() {
         description: `Si è verificato un errore imprevisto: ${error.message || "Riprova più tardi."}`,
         variant: "destructive",
       });
+    } finally {
       setIsLoading(false); 
     }
   };
@@ -216,18 +266,39 @@ export function UnifiedRegisterForm() {
           Crea il Tuo Account e Registra l'Azienda
         </CardTitle>
         <CardDescription>
-          Compila i campi per iniziare.
+          Compila i campi per iniziare. L'email e la password saranno le tue credenziali di accesso.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
+                control={form.control}
+                name="adminName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Il Tuo Nome e Cognome</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <UserCircle className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input 
+                          placeholder="Mario Rossi" 
+                          {...field} 
+                          className="pl-10" 
+                          disabled={isLoading || !!prefilledUser?.displayName} 
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            <FormField
               control={form.control}
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>Email Amministratore (Login)</FormLabel>
                   <FormControl>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -235,7 +306,8 @@ export function UnifiedRegisterForm() {
                         placeholder="admin@azienda.com" 
                         {...field} 
                         className="pl-10" 
-                        disabled={isLoading} 
+                        disabled={isLoading || !!prefilledUser?.email} 
+                        readOnly={!!prefilledUser?.email}
                       />
                     </div>
                   </FormControl>
@@ -243,38 +315,42 @@ export function UnifiedRegisterForm() {
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" disabled={isLoading} />
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Conferma Password</FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" disabled={isLoading} />
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {!prefilledUser && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input type="password" placeholder="••••••••" {...field} className="pl-10" disabled={isLoading} />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="confirmPassword"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Conferma Password</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input type="password" placeholder="••••••••" {...field} className="pl-10" disabled={isLoading} />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
             <FormField
               control={form.control}
               name="companyName"
@@ -307,7 +383,10 @@ export function UnifiedRegisterForm() {
                         disabled={isLoading}
                         onBlur={(e) => { 
                             const manualSlug = generateSlug(e.target.value);
-                            if (e.target.value !== manualSlug) {
+                            if (e.target.value.trim() === "" && companyNameValue) { 
+                                field.onChange(generateSlug(companyNameValue));
+                                form.trigger("slug");
+                            } else if (e.target.value.trim() !== "" && e.target.value !== manualSlug) {
                                 field.onChange(manualSlug); 
                                 form.trigger("slug"); 
                             }
@@ -398,7 +477,7 @@ export function UnifiedRegisterForm() {
               )}
             />
             <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isLoading}>
-              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Registrati e Vai alla Dashboard"}
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Registra e Vai alla Dashboard"}
             </Button>
           </form>
         </Form>
@@ -416,3 +495,5 @@ export function UnifiedRegisterForm() {
     </Card>
   );
 }
+
+    
