@@ -28,7 +28,7 @@ export default function LandingPage() {
               Benvenuto in Incastro
             </h1>
             <p className="mb-10 text-lg text-muted-foreground md:text-xl">
-              La piattaforma SaaS per ottimizzare la gestione dei tuoi interventi tecnici.
+              La piattaforma per ottimizzare la gestione dei tuoi interventi tecnici.
             </p>
             <div className="mx-auto max-w-md">
               <LoginForm />
@@ -51,7 +51,7 @@ export default function LandingPage() {
             <div className="order-1 md:order-2">
               <Image
                 src="https://placehold.co/600x400.png"
-                alt="Illustrazione di Incastro SaaS"
+                alt="Illustrazione di Incastro"
                 width={600}
                 height={400}
                 className="rounded-lg shadow-lg"
@@ -107,7 +107,7 @@ export default function LandingPage() {
             <h2 className="mb-10 text-center text-3xl font-bold text-primary">
               Perché Scegliere Incastro?
             </h2>
-            <div className="grid gap-8 md:grid-cols-3"> {/* Modificata questa riga */}
+            <div className="grid gap-8 md:grid-cols-3">
               <div className="rounded-lg border bg-card p-6 shadow-sm">
                 <Zap className="mb-4 h-10 w-10 text-accent" />
                 <h3 className="mb-2 text-xl font-semibold">Efficienza Operativa</h3>
@@ -138,7 +138,7 @@ export default function LandingPage() {
       <footer className="border-t py-8 text-center">
         <div className="container mx-auto max-w-screen-lg px-4">
           <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} Incastro SaaS. Tutti i diritti riservati.
+            &copy; {new Date().getFullYear()} Incastro. Tutti i diritti riservati.
           </p>
         </div>
       </footer>
