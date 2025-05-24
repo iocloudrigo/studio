@@ -33,6 +33,11 @@ export default function LandingPage() {
       id: "faq-4",
       question: "Posso personalizzare le informazioni della mia azienda visibili ai clienti?",
       answer: "Sì, dalla tua dashboard, nella sezione \"Impostazioni\", puoi configurare il nome della tua azienda e lo \"slug\" (la parte dell'URL che identifica la tua pagina pubblica di richiesta). Questo aiuta i clienti a riconoscerti immediatamente."
+    },
+    {
+      id: "faq-5",
+      question: "Posso modificare il link da condividere al cliente?",
+      answer: "Sì, puoi utilizzare servizi esterni di short-link come Bit.ly per accorciare e personalizzare il link generato da Incastro. Inoltre, puoi trasformare il link in un QR Code da stampare o condividere digitalmente per un accesso ancora più rapido da parte dei tuoi clienti."
     }
   ];
 
