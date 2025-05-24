@@ -25,7 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, User, Mail, Phone, Wrench, Briefcase, PlusCircle } from "lucide-react";
+import { Loader2, User, Mail, Phone, Wrench, Briefcase, PlusCircle, MapPin } from "lucide-react"; // Aggiunto MapPin
 import { auth, db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import type { User as FirebaseUser } from "firebase/auth";
@@ -35,6 +35,7 @@ const NewTechnicianFormSchema = z.object({
   nome_completo: z.string().min(1, "Il nome del tecnico è obbligatorio."),
   email: z.string().email("Indirizzo email non valido.").optional().or(z.literal("")),
   telefono: z.string().optional(),
+  citta: z.string().min(1, "La città è obbligatoria."), // Aggiunto campo città
   competenze: z.string().optional().describe("Inserisci competenze separate da virgola, es: Idraulica, Elettricità"),
   stato: z.string().min(1, "Lo stato è obbligatorio."),
 });
@@ -70,6 +71,7 @@ export default function NewTechnicianPage() {
       nome_completo: "",
       email: "",
       telefono: "",
+      citta: "", // Aggiunto default per città
       competenze: "",
       stato: "Disponibile",
     },
@@ -93,6 +95,7 @@ export default function NewTechnicianPage() {
         nome_completo: data.nome_completo,
         email: data.email || null,
         telefono: data.telefono || null,
+        citta: data.citta, // Aggiunto città
         competenze: competenzeArray,
         stato: data.stato,
         data_creazione: serverTimestamp(),
@@ -192,6 +195,22 @@ export default function NewTechnicianPage() {
                   )}
                 />
               </div>
+              <FormField
+                control={form.control}
+                name="citta"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Città <span className="text-destructive">*</span></FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input placeholder="Es: Milano" {...field} className="pl-10" />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="competenze"

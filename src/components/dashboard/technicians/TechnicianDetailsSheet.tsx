@@ -41,13 +41,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useState, useEffect, type FC } from "react";
-import { Loader2, User, Mail, Phone, Wrench, Briefcase, Trash2 } from "lucide-react";
+import { Loader2, User, Mail, Phone, Wrench, Briefcase, Trash2, MapPin } from "lucide-react"; // Aggiunto MapPin
 import type { Technician } from "@/app/dashboard/technicians/page.tsx";
 
 const technicianFormSchema = z.object({
   nome_completo: z.string().min(1, { message: "Il nome completo è richiesto." }),
   email: z.string().email({ message: "Indirizzo email non valido."}).optional().or(z.literal("")),
   telefono: z.string().optional(),
+  citta: z.string().min(1, { message: "La città è obbligatoria."}), // Aggiunto campo città
   competenze: z.string().optional().describe("Competenze separate da virgola"),
   stato: z.string().min(1, { message: "Lo stato è richiesto."}),
 });
@@ -80,6 +81,7 @@ export const TechnicianDetailsSheet: FC<TechnicianDetailsSheetProps> = ({
       nome_completo: "",
       email: "",
       telefono: "",
+      citta: "", // Aggiunto default città
       competenze: "",
       stato: "Disponibile",
     },
@@ -91,6 +93,7 @@ export const TechnicianDetailsSheet: FC<TechnicianDetailsSheetProps> = ({
         nome_completo: technician.nome_completo,
         email: technician.email || "",
         telefono: technician.telefono || "",
+        citta: technician.citta || "", // Aggiunto città
         competenze: technician.competenze ? technician.competenze.join(", ") : "",
         stato: technician.stato,
       });
@@ -183,6 +186,22 @@ export const TechnicianDetailsSheet: FC<TechnicianDetailsSheetProps> = ({
                         <div className="relative">
                           <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                           <Input type="tel" {...field} className="pl-10" disabled={isSaving} />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="citta"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Città <span className="text-destructive">*</span></FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input {...field} className="pl-10" disabled={isSaving} placeholder="Es: Roma" />
                         </div>
                       </FormControl>
                       <FormMessage />

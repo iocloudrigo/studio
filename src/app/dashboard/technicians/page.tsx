@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Users, PlusCircle, Search, Edit, Trash2, Loader2 } from "lucide-react";
+import { Users, PlusCircle, Search, Edit, Trash2, Loader2, MapPin } from "lucide-react"; // Aggiunto MapPin
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, deleteDoc } from "firebase/firestore";
-import { TechnicianDetailsSheet, type TechnicianFormValues as TechnicianSheetFormValues } from "@/components/dashboard/technicians/TechnicianDetailsSheet"; // Creeremo questo componente
+import { TechnicianDetailsSheet, type TechnicianFormValues as TechnicianSheetFormValues } from "@/components/dashboard/technicians/TechnicianDetailsSheet"; 
 
 export interface Technician {
   id: string;
@@ -22,6 +22,7 @@ export interface Technician {
   nome_completo: string;
   email?: string;
   telefono?: string;
+  citta?: string; // Aggiunto campo città
   competenze?: string[];
   stato: string;
   data_creazione: Timestamp;
@@ -91,6 +92,7 @@ export default function TechniciansPage() {
       const searchTermLower = searchTerm.toLowerCase();
       return tech.nome_completo.toLowerCase().includes(searchTermLower) ||
              (tech.email && tech.email.toLowerCase().includes(searchTermLower)) ||
+             (tech.citta && tech.citta.toLowerCase().includes(searchTermLower)) || // Aggiunta ricerca per città
              (tech.competenze && tech.competenze.some(skill => skill.toLowerCase().includes(searchTermLower)));
     });
   }, [technicians, searchTerm]);
@@ -109,7 +111,7 @@ export default function TechniciansPage() {
         : Array.isArray(data.competenze) ? data.competenze : [];
 
       await updateDoc(technicianDocRef, {
-        ...data,
+        ...data, // include città se presente in data
         competenze: competenzeArray,
         email: data.email || null,
         telefono: data.telefono || null,
@@ -172,7 +174,7 @@ export default function TechniciansPage() {
             <div className="flex-1 relative">
                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                <Input 
-                 placeholder="Cerca per nome, email, competenza..." 
+                 placeholder="Cerca per nome, email, città, competenza..." 
                  className="pl-10 w-full md:w-auto"
                  value={searchTerm}
                  onChange={(e) => setSearchTerm(e.target.value)}
@@ -194,6 +196,7 @@ export default function TechniciansPage() {
                     <tr className="border-b">
                         <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Nome</th>
                         <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Contatti</th>
+                        <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Città</th> {/* Nuova colonna Città */}
                         <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Competenze</th>
                         <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th>
                         <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
@@ -208,24 +211,25 @@ export default function TechniciansPage() {
                                 <AvatarImage src={`https://placehold.co/40x40.png?text=${tech.nome_completo.substring(0,2).toUpperCase()}`} alt={tech.nome_completo} data-ai-hint="person initial"/>
                                 <AvatarFallback>{tech.nome_completo.substring(0,2).toUpperCase()}</AvatarFallback>
                             </Avatar>
-                            <span className="font-medium text-primary">{tech.nome_completo}</span>
+                            <span className="font-medium text-primary whitespace-nowrap">{tech.nome_completo}</span>
                             </div>
                         </td>
-                        <td className="p-3 text-sm">
+                        <td className="p-3 text-sm whitespace-nowrap">
                             <div>{tech.email || "N/D"}</div>
                             <div className="text-xs text-muted-foreground">{tech.telefono || "N/D"}</div>
                         </td>
+                        <td className="p-3 text-sm whitespace-nowrap">{tech.citta || "N/D"}</td> {/* Visualizzazione Città */}
                         <td className="p-3 text-sm">
                             <div className="flex flex-wrap gap-1">
                             {(tech.competenze && tech.competenze.length > 0) ? tech.competenze.map(skill => <Badge key={skill} variant="secondary">{skill}</Badge>) : <span className="text-muted-foreground">N/D</span>}
                             </div>
                         </td>
-                        <td className="p-3 text-sm">
+                        <td className="p-3 text-sm whitespace-nowrap">
                             <Badge className={getStatusBadgeClass(tech.stato)}>
                             {tech.stato}
                             </Badge>
                         </td>
-                        <td className="p-3 text-right text-sm">
+                        <td className="p-3 text-right text-sm whitespace-nowrap">
                             <Button variant="outline" size="sm" onClick={() => handleOpenDetailsSheet(tech)}>
                                 <Edit className="mr-1 h-3 w-3"/> Dettagli
                             </Button>
