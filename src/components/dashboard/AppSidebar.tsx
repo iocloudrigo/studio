@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Logo } from "@/components/shared/Logo";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation"; // Added useRouter
+import { usePathname, useRouter } from "next/navigation"; // useRouter è già importato
 import {
   LayoutDashboard,
   FileText,
@@ -28,26 +28,26 @@ import {
   Lightbulb,
   ChevronDown,
   ChevronUp,
-  LogOut, // Added LogOut icon
-  Archive, // Aggiunta icona Archive
+  LogOut,
+  Archive,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { signOut } from "firebase/auth"; // Added signOut
-import { auth } from "@/lib/firebase"; // Added auth instance
-import { useToast } from "@/hooks/use-toast"; // Added useToast
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { 
-    label: "Richieste", 
+  {
+    label: "Richieste",
     icon: FileText,
     subItems: [
       { href: "/dashboard/requests", label: "Tutte le Richieste", icon: FileText },
       { href: "/dashboard/requests/new", label: "Nuova Richiesta", icon: MessageSquarePlus },
       { href: "/dashboard/requests/suggestions", label: "Suggerimenti AI", icon: Lightbulb },
-      { href: "/dashboard/requests?statusFilter=completata", label: "Archiviate", icon: Archive }, // Voce Archiviate
+      { href: "/dashboard/requests?statusFilter=completata", label: "Archiviate", icon: Archive },
     ]
   },
   { href: "/dashboard/appointments", label: "Appuntamenti", icon: CalendarDays },
@@ -56,13 +56,12 @@ const navItems = [
 ];
 
 export function AppSidebar() {
-  const pathname = usePathname();
-  const { state: sidebarState, isMobile } = useSidebar();
-  const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
+  const currentPathname = usePathname(); // Chiamato una volta qui
   const router = useRouter();
   const { toast } = useToast();
+  const { state: sidebarState, isMobile } = useSidebar();
+  const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
 
-  // Collapse submenus when sidebar collapses or on mobile initially
   useEffect(() => {
     if (sidebarState === "collapsed" || isMobile) {
       setOpenSubmenus({});
@@ -82,7 +81,7 @@ export function AppSidebar() {
         title: "Logout Effettuato",
         description: "Sei stato disconnesso con successo.",
       });
-      router.push("/"); // Redirect to login page (root)
+      router.push("/");
     } catch (error) {
       console.error("Errore durante il logout:", error);
       toast({
@@ -117,11 +116,14 @@ export function AppSidebar() {
                     className={cn(
                       "flex w-full items-center justify-between gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                       sidebarState === "collapsed" && "!size-8 !p-2",
-                      item.subItems.some(sub => pathname === sub.href || (pathname === '/dashboard/requests' && sub.href.startsWith('/dashboard/requests?statusFilter='))) && "bg-sidebar-accent text-sidebar-accent-foreground"
+                      item.subItems.some(sub => {
+                        const currentFullUrl = currentPathname + (typeof window !== "undefined" ? window.location.search : "");
+                        return currentFullUrl === sub.href || (currentPathname === '/dashboard/requests' && sub.href.startsWith('/dashboard/requests?statusFilter='));
+                      }) && "bg-sidebar-accent text-sidebar-accent-foreground"
                     )}
                     onClick={() => toggleSubmenu(item.label)}
                     title={item.label}
-                    disabled={sidebarState === "collapsed"} // Disable accordion behavior when collapsed
+                    disabled={sidebarState === "collapsed"}
                   >
                     <div className="flex items-center gap-2">
                       <item.icon className="h-4 w-4 shrink-0" />
@@ -131,26 +133,31 @@ export function AppSidebar() {
                   </Button>
                   {openSubmenus[item.label] && sidebarState === "expanded" && (
                     <SidebarMenuSub>
-                      {item.subItems.map((subItem) => (
-                        <SidebarMenuSubItem key={subItem.href}>
-                          <Link href={subItem.href} legacyBehavior passHref>
-                            <SidebarMenuSubButton
-                              isActive={pathname === subItem.href || (pathname === '/dashboard/requests' && subItem.href.startsWith('/dashboard/requests?statusFilter=') && usePathname() + (typeof window !== "undefined" ? window.location.search : "") === subItem.href)}
-                              className="gap-2"
-                            >
-                              <subItem.icon className="h-4 w-4 shrink-0" />
-                              <span>{subItem.label}</span>
-                            </SidebarMenuSubButton>
-                          </Link>
-                        </SidebarMenuSubItem>
-                      ))}
+                      {item.subItems.map((subItem) => {
+                        const currentFullUrl = currentPathname + (typeof window !== "undefined" ? window.location.search : "");
+                        const isActive = currentFullUrl === subItem.href || (currentPathname === '/dashboard/requests' && subItem.href.startsWith('/dashboard/requests?statusFilter=') && currentFullUrl === subItem.href);
+                        
+                        return (
+                          <SidebarMenuSubItem key={subItem.href}>
+                            <Link href={subItem.href} legacyBehavior passHref>
+                              <SidebarMenuSubButton
+                                isActive={isActive}
+                                className="gap-2"
+                              >
+                                <subItem.icon className="h-4 w-4 shrink-0" />
+                                <span>{subItem.label}</span>
+                              </SidebarMenuSubButton>
+                            </Link>
+                          </SidebarMenuSubItem>
+                        );
+                      })}
                     </SidebarMenuSub>
                   )}
                 </>
               ) : (
                 <Link href={item.href} legacyBehavior passHref>
                   <SidebarMenuButton
-                    isActive={pathname === item.href}
+                    isActive={currentPathname === item.href}
                     tooltip={sidebarState === "collapsed" ? item.label : undefined}
                   >
                     <item.icon />
