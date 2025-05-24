@@ -4,9 +4,38 @@ import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Image from "next/image";
-import { CheckCircle, Users, Zap, Target, UserPlus, Link2, ListChecks, CalendarCog } from "lucide-react";
+import { CheckCircle, Users, Zap, Target, UserPlus, Link2, ListChecks, CalendarCog, HelpCircle, ChevronRight } from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 export default function LandingPage() {
+  const faqItems = [
+    {
+      id: "faq-1",
+      question: "Come posso iniziare a usare Incastro per la mia attività?",
+      answer: "È semplice! Clicca su \"Registrati\" in alto, crea il tuo account amministratore e inserisci i dettagli della tua azienda. Riceverai subito un link unico da condividere con i tuoi clienti per iniziare a ricevere richieste."
+    },
+    {
+      id: "faq-2",
+      question: "Incastro è adatto anche per professionisti singoli o solo per aziende con più tecnici?",
+      answer: "Incastro è perfetto sia per professionisti singoli che per aziende con team di tecnici. Puoi gestire le richieste e, se hai collaboratori, assegnare loro gli interventi. Se operi da solo, gestirai tutto tu in modo centralizzato."
+    },
+    {
+      id: "faq-3",
+      question: "I miei clienti devono scaricare un'app o registrarsi per inviare una richiesta?",
+      answer: "No, i tuoi clienti non hanno bisogno di scaricare nulla né di registrarsi. Inviano le richieste tramite un semplice modulo web accessibile dal link unico personalizzato che fornirai loro (es. /richiedi-intervento?azienda=TUO-NOME)."
+    },
+    {
+      id: "faq-4",
+      question: "Posso personalizzare le informazioni della mia azienda visibili ai clienti?",
+      answer: "Sì, dalla tua dashboard, nella sezione \"Impostazioni\", puoi configurare il nome della tua azienda e lo \"slug\" (la parte dell'URL che identifica la tua pagina pubblica di richiesta). Questo aiuta i clienti a riconoscerti immediatamente."
+    }
+  ];
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* Header */}
@@ -179,6 +208,34 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+
+        {/* FAQ Section */}
+        <section className="py-12 md:py-20">
+          <div className="container mx-auto max-w-screen-lg px-4">
+            <div className="mb-12 text-center">
+                <HelpCircle className="mx-auto h-12 w-12 text-primary mb-4" />
+                <h2 className="text-3xl font-bold text-primary">
+                    Domande Frequenti (FAQ)
+                </h2>
+                <p className="mt-2 text-muted-foreground">
+                    Trova le risposte alle domande più comuni su Incastro.
+                </p>
+            </div>
+            <Accordion type="single" collapsible className="w-full max-w-2xl mx-auto">
+              {faqItems.map((item) => (
+                <AccordionItem value={item.id} key={item.id}>
+                  <AccordionTrigger className="text-lg hover:no-underline">
+                    {item.question}
+                  </AccordionTrigger>
+                  <AccordionContent className="text-base text-muted-foreground leading-relaxed">
+                    {item.answer}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+        </section>
+
       </main>
 
       {/* Footer */}
