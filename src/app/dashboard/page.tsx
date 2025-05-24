@@ -128,12 +128,13 @@ export default function DashboardPage() {
         setLoadingStats(prev => ({ ...prev, inProgressRequests: false }));
       }
 
-      // Fetch Recent Requests (Table)
+      // Fetch Recent Requests (Table) - Escludi "completata" e "annullata"
       setLoadingRequests(true);
       try {
         const requestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
+          where("stato", "not-in", ["completata", "annullata"]), 
           orderBy("created_at", "desc"),
           limit(10)
         );
@@ -142,7 +143,7 @@ export default function DashboardPage() {
           const data = doc.data();
           return {
             id: doc.id,
-            id_azienda: data.id_azienda, // Aggiunto
+            id_azienda: data.id_azienda,
             customer: data.nome_cliente || "N/D",
             service: data.tipo_servizio || "N/D",
             status: data.stato || "N/D",
@@ -156,8 +157,8 @@ export default function DashboardPage() {
             completata_da_collaboratore_id: data.completata_da_collaboratore_id,
             completata_da_collaboratore_nome: data.completata_da_collaboratore_nome,
             data_completamento: data.data_completamento as Timestamp | undefined,
-            assegnato_a_tecnico_id: data.assegnato_a_tecnico_id, // Aggiunto
-            assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome, // Aggiunto
+            assegnato_a_tecnico_id: data.assegnato_a_tecnico_id,
+            assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome,
           } as RecentRequest;
         });
         setRecentRequests(fetchedRequests);
@@ -183,12 +184,17 @@ export default function DashboardPage() {
       await updateDoc(requestDocRef, { stato: newStatus, ...additionalData });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
-      setRecentRequests(prevRequests =>
-        prevRequests.map(req =>
-          req.id === requestId ? { ...req, status: newStatus, ...additionalData } : req
-        )
-      );
+      if (newStatus === "completata" || newStatus === "annullata") {
+        setRecentRequests(prevRequests => prevRequests.filter(req => req.id !== requestId));
+      } else {
+        setRecentRequests(prevRequests =>
+          prevRequests.map(req =>
+            req.id === requestId ? { ...req, status: newStatus, ...additionalData } : req
+          )
+        );
+      }
 
+      // Refetch stats
       if (companyId) {
         setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true }));
         try {
@@ -298,8 +304,8 @@ export default function DashboardPage() {
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Ultime Richieste</CardTitle>
-          <CardDescription>Visualizza le richieste di intervento più recenti.</CardDescription>
+          <CardTitle>Ultime Richieste (Non Chiuse)</CardTitle>
+          <CardDescription>Visualizza le richieste di intervento più recenti che non sono ancora completate o annullate.</CardDescription>
         </CardHeader>
         <CardContent>
           {loadingRequests ? (
@@ -361,7 +367,7 @@ export default function DashboardPage() {
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="mx-auto h-12 w-12 mb-2" />
-              <p>Nessuna richiesta recente trovata.</p>
+              <p>Nessuna richiesta recente attiva trovata.</p>
             </div>
           )}
         </CardContent>
@@ -402,5 +408,4 @@ export default function DashboardPage() {
     </div>
   );
 }
-
     

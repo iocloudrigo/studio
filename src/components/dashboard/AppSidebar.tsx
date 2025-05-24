@@ -32,7 +32,7 @@ import {
   Archive,
   User as UserIcon,
   Loader2,
-  Contact, // Nuova icona per Clienti
+  Contact, 
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useState, useEffect, useCallback } from "react";
@@ -74,11 +74,11 @@ const navItems = [
       { href: "/dashboard/requests", label: "Tutte le Richieste", icon: FileText },
       { href: "/dashboard/requests/new", label: "Nuova Richiesta", icon: MessageSquarePlus },
       { href: "/dashboard/requests/suggestions", label: "Suggerimenti AI", icon: Lightbulb },
-      { href: "/dashboard/requests?statusFilter=completata", label: "Archiviate", icon: Archive },
+      { href: "/dashboard/requests?statusFilter=completata,annullata", label: "Archiviate", icon: Archive },
     ]
   },
   { href: "/dashboard/appointments", label: "Appuntamenti", icon: CalendarDays },
-  { href: "/dashboard/clients", label: "Clienti", icon: Contact }, // Nuova voce Clienti
+  { href: "/dashboard/clients", label: "Clienti", icon: Contact },
   { href: "/dashboard/technicians", label: "Tecnici", icon: Users },
   { href: "/dashboard/settings", label: "Impostazioni", icon: Settings },
 ];
