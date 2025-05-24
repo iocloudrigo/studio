@@ -5,12 +5,14 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { FileText, CalendarDays, PlusCircle, Lightbulb, User, Users } from "lucide-react";
+import { FileText, CalendarDays, PlusCircle, Lightbulb, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton"; 
+import { RequestDetailsSheet } from "@/components/dashboard/requests/RequestDetailsSheet"; // Import the new sheet
+import { useToast } from "@/hooks/use-toast";
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { collection, query, where, getCountFromServer, getDocs, orderBy, limit, Timestamp } from "firebase/firestore";
+import { collection, query, where, getCountFromServer, getDocs, orderBy, limit, Timestamp, doc, updateDoc } from "firebase/firestore";
 
 interface DashboardStats {
   activeRequests: number;
@@ -18,16 +20,24 @@ interface DashboardStats {
   techniciansAvailable: number;
 }
 
-interface RecentRequest {
+// Export this interface to be used by RequestDetailsSheet
+export interface RecentRequest {
   id: string;
-  customer: string;
-  service: string;
-  status: string;
+  customer: string; // from nome_cliente
+  service: string;  // from tipo_servizio
+  status: string;   // from stato
+  created_at?: Timestamp; 
+  note_aggiuntive?: string;
+  indirizzo_intervento?: string;
+  telefono_cliente?: string;
+  giorno_preferito?: string;
+  fascia_oraria?: string;
 }
 
 export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const [stats, setStats] = useState<DashboardStats>({
     activeRequests: 0,
@@ -39,6 +49,10 @@ export default function DashboardPage() {
   const [loadingStats, setLoadingStats] = useState(true);
   const [loadingRequests, setLoadingRequests] = useState(true);
 
+  // State for the RequestDetailsSheet
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<RecentRequest | null>(null);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -47,6 +61,11 @@ export default function DashboardPage() {
       } else {
         setCurrentUser(null);
         setCompanyId(null);
+        // Optionally clear data or redirect if unauthenticated
+        setStats({ activeRequests: 0, pendingAppointments: 0, techniciansAvailable: 0 });
+        setRecentRequests([]);
+        setLoadingStats(false);
+        setLoadingRequests(false);
       }
     });
     return () => unsubscribe();
@@ -96,6 +115,7 @@ export default function DashboardPage() {
         });
       } catch (error) {
         console.error("Error fetching dashboard stats:", error);
+        toast({ title: "Errore Dati Dashboard", description: "Impossibile caricare le statistiche.", variant: "destructive" });
         setStats({ activeRequests: 0, pendingAppointments: 0, techniciansAvailable: 0 }); 
       } finally {
         setLoadingStats(false);
@@ -114,14 +134,21 @@ export default function DashboardPage() {
           const data = doc.data();
           return {
             id: doc.id,
-            customer: data.customer || data.nome_cliente || "N/D", 
-            service: data.service || data.tipo_servizio || "N/D", 
-            status: data.status || data.stato || "N/D", 
+            customer: data.nome_cliente || "N/D", 
+            service: data.tipo_servizio || "N/D", 
+            status: data.stato || "N/D", 
+            created_at: data.created_at as Timestamp | undefined,
+            note_aggiuntive: data.note_aggiuntive || "",
+            indirizzo_intervento: data.indirizzo_intervento || "",
+            telefono_cliente: data.telefono_cliente || "",
+            giorno_preferito: data.giorno_preferito || "",
+            fascia_oraria: data.fascia_oraria || "",
           };
         }) as RecentRequest[];
         setRecentRequests(fetchedRequests);
       } catch (error) {
         console.error("Error fetching recent requests:", error);
+        toast({ title: "Errore Richieste Recenti", description: "Impossibile caricare le richieste recenti.", variant: "destructive" });
         setRecentRequests([]); 
       } finally {
         setLoadingRequests(false);
@@ -129,7 +156,36 @@ export default function DashboardPage() {
     };
 
     fetchDashboardData();
-  }, [companyId]);
+  }, [companyId, toast]);
+
+  const handleUpdateRequestStatus = async (requestId: string, newStatus: string) => {
+    if (!companyId) {
+      toast({ title: "Errore", description: "ID azienda non trovato.", variant: "destructive" });
+      return;
+    }
+    try {
+      const requestDocRef = doc(db, "richieste_clienti", requestId);
+      // Optional: Add a getDoc here to verify ownership if Firestore rules are not strict enough
+      // const requestDocSnap = await getDoc(requestDocRef);
+      // if (!requestDocSnap.exists() || requestDocSnap.data()?.id_azienda !== companyId) {
+      //   toast({ title: "Operazione non permessa", description: "Non hai i permessi per modificare questa richiesta.", variant: "destructive" });
+      //   throw new Error("Permission denied or request not found");
+      // }
+      await updateDoc(requestDocRef, { stato: newStatus });
+      toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
+
+      setRecentRequests(prevRequests =>
+        prevRequests.map(req =>
+          req.id === requestId ? { ...req, status: newStatus } : req
+        )
+      );
+    } catch (error) {
+      console.error("Error updating request status:", error);
+      toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare lo stato della richiesta.", variant: "destructive" });
+      throw error; 
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -223,20 +279,28 @@ export default function DashboardPage() {
                       <td className="p-3 text-sm">{req.customer}</td>
                       <td className="p-3 text-sm">{req.service}</td>
                       <td className="p-3 text-sm">
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          req.status === "Completato" ? "bg-green-100 text-green-700" :
-                          req.status === "Assegnato" ? "bg-blue-100 text-blue-700" :
-                          req.status === "In attesa" ? "bg-orange-100 text-orange-700" :
-                          req.status === "Nuova" ? "bg-purple-100 text-purple-700" :
-                          req.status === "Annullato" ? "bg-red-100 text-red-700" :
+                        <span className={`px-2 py-1 text-xs rounded-full capitalize ${
+                          req.status === "completata" ? "bg-green-100 text-green-700" :
+                          req.status === "assegnata" ? "bg-blue-100 text-blue-700" :
+                          req.status === "in attesa" ? "bg-orange-100 text-orange-700" :
+                          req.status === "programmata" ? "bg-yellow-100 text-yellow-700" :
+                          req.status === "in corso" ? "bg-indigo-100 text-indigo-700" :
+                          req.status === "annullata" ? "bg-red-100 text-red-700" :
                           "bg-gray-100 text-gray-700" 
                         }`}>
-                          {req.status}
+                          {req.status.replace("_", " ")}
                         </span>
                       </td>
                       <td className="p-3 text-right text-sm">
-                        <Button variant="outline" size="sm" asChild>
-                          <Link href={`/dashboard/requests/${req.id}`}>Dettagli</Link>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => {
+                            setSelectedRequest(req);
+                            setIsSheetOpen(true);
+                          }}
+                        >
+                          Dettagli
                         </Button>
                       </td>
                     </tr>
@@ -278,6 +342,15 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+      {selectedRequest && (
+        <RequestDetailsSheet
+          isOpen={isSheetOpen}
+          onOpenChange={setIsSheetOpen}
+          request={selectedRequest}
+          onUpdateRequestStatus={handleUpdateRequestStatus}
+        />
+      )}
     </div>
   );
 }
+
