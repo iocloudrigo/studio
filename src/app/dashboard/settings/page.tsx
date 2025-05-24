@@ -97,6 +97,12 @@ export interface Collaborator {
   id_azienda: string; 
 }
 
+interface ActiveCollaboratorStorageData {
+  id: string;
+  nome_completo: string;
+  ruolo: string;
+}
+
 const LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY = "activeIncastroCollaborator";
 
 const generateSlug = (name: string): string => {
@@ -128,6 +134,8 @@ export default function SettingsPage() {
 
   const [selectedCollaboratorForSheet, setSelectedCollaboratorForSheet] = useState<Collaborator | null>(null);
   const [isCollaboratorSheetOpen, setIsCollaboratorSheetOpen] = useState(false);
+
+  const [activeCollaboratorRole, setActiveCollaboratorRole] = useState<string | null>(null);
   
   const companyForm = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
@@ -196,7 +204,7 @@ export default function SettingsPage() {
           id_azienda: adminCompanyId,
           nome_completo: adminName,
           email: adminEmail,
-          ruolo: "Amministratore", // Ruolo di default per l'admin
+          ruolo: "Amministratore", 
           data_creazione: serverTimestamp(),
         };
         await addDoc(collaboratorsRef, adminCollaboratorData);
@@ -276,8 +284,37 @@ export default function SettingsPage() {
       }
       setLoadingData(false);
     });
-    return () => unsubscribe();
-  }, [companyForm, profileForm, toast, fetchCollaborators, companyId]); 
+
+    // Listener per il cambio di collaboratore attivo da localStorage (impostato da AppSidebar)
+    const handleStorageChange = () => {
+      const storedActiveCollaboratorString = localStorage.getItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
+      if (storedActiveCollaboratorString) {
+        try {
+          const activeCollabData: ActiveCollaboratorStorageData = JSON.parse(storedActiveCollaboratorString);
+          setActiveCollaboratorRole(activeCollabData.ruolo);
+        } catch (e) {
+          console.error("Error parsing active collaborator from localStorage on change:", e);
+          setActiveCollaboratorRole(null);
+        }
+      } else {
+        setActiveCollaboratorRole(null);
+      }
+    };
+
+    // Leggi il valore iniziale
+    handleStorageChange();
+
+    window.addEventListener('storage', handleStorageChange); // Ascolta i cambi cross-tab
+    // Potrebbe essere necessario un evento custom se AppSidebar non scatena 'storage' event
+    // Per ora, ci affidiamo al fatto che questa pagina si ricarichi/ri-renderizzi
+    // in modo da leggere localStorage in useEffect. Per un aggiornamento più reattivo
+    // se AppSidebar e SettingsPage sono montate contemporaneamente, servirebbe un context o pub/sub.
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [companyForm, profileForm, toast, fetchCollaborators, companyId]); // Aggiunto companyId alle dipendenze
 
   const companyNameValue = companyForm.watch("nome");
   const companySlugValue = companyForm.watch("slug");
@@ -375,38 +412,29 @@ export default function SettingsPage() {
       return;
     }
 
-    // Controllo del ruolo del COLLABORATORE ATTIVO (selezionato nella sidebar)
     const storedActiveCollaboratorString = localStorage.getItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
-    if (!storedActiveCollaboratorString) {
-      toast({ title: "Errore", description: "Nessun collaboratore attivo selezionato. Seleziona un Amministratore per procedere.", variant: "destructive" });
-      setIsSavingProfile(false);
-      return;
-    }
-    let activeCollaboratorStorage: { id: string; nome_completo: string };
-    try {
-        activeCollaboratorStorage = JSON.parse(storedActiveCollaboratorString);
-    } catch (e) {
-        toast({ title: "Errore", description: "Dati collaboratore attivo non validi.", variant: "destructive" });
-        setIsSavingProfile(false);
-        return;
+    let currentActiveRole = null;
+    if (storedActiveCollaboratorString) {
+        try {
+            const activeCollabData: ActiveCollaboratorStorageData = JSON.parse(storedActiveCollaboratorString);
+            currentActiveRole = activeCollabData.ruolo;
+        } catch (e) {
+            console.error("Error parsing active collaborator for profile save:", e);
+        }
     }
     
-    const activeCollaboratorDetails = collaborators.find(c => c.id === activeCollaboratorStorage.id);
-
-    if (!activeCollaboratorDetails || activeCollaboratorDetails.ruolo !== "Amministratore") {
+    if (currentActiveRole !== "Amministratore") {
       toast({
         title: "Azione Non Permessa",
-        description: "Devi aver selezionato un utente con ruolo 'Amministratore' nella sidebar per modificare i dettagli del profilo principale.",
+        description: "Devi operare come 'Amministratore' per modificare i dettagli del profilo principale.",
         variant: "destructive"
       });
       setIsSavingProfile(false);
       return;
     }
-    // Fine controllo ruolo collaboratore attivo
-
+    
     setIsSavingProfile(true);
     let profileUpdated = false;
-    let emailUpdatedInAuth = false;
 
     try {
       if (data.displayName !== currentUser.displayName) {
@@ -420,7 +448,6 @@ export default function SettingsPage() {
           const companyDocRef = doc(db, "aziende", currentUser.uid);
           await updateDoc(companyDocRef, { email_admin: data.email });
           profileUpdated = true;
-          emailUpdatedInAuth = true;
         } catch (emailError: any) {
           console.error("Errore aggiornamento email Firebase Auth:", emailError);
           let desc = `Impossibile aggiornare l'email: ${emailError.message}`;
@@ -456,25 +483,13 @@ export default function SettingsPage() {
         }
       }
 
-      // Sincronizza i dettagli dell'amministratore con collaboratori_azienda
-      // Usa l'email dell'utente corrente dopo un eventuale aggiornamento
       const currentAuthUserAfterPossibleUpdates = auth.currentUser; 
       if (currentAuthUserAfterPossibleUpdates) {
         const adminEmailForQuery = currentAuthUserAfterPossibleUpdates.email || "";
         const adminDisplayNameForUpdate = currentAuthUserAfterPossibleUpdates.displayName || data.displayName;
 
         const adminCollaboratorsRef = collection(db, "collaboratori_azienda");
-        // Cerca il collaboratore admin usando l'UID dell'admin (currentUser.uid) E la sua email corrente.
-        // L'email potrebbe essere cambiata, quindi non possiamo fare affidamento solo sulla vecchia email.
-        // Se un admin cambia email, il suo vecchio record collaboratore (con la vecchia email) deve essere aggiornato.
-        // E se per caso ci fosse un altro record con la nuova email (improbabile se email sono uniche),
-        // dobbiamo essere cauti. Un approccio più sicuro è trovare il record dell'admin tramite un ID fisso se possibile,
-        // o usare l'email solo come uno dei criteri. Per ora, assumiamo che l'admin sia l'unico con la sua email
-        // all'interno della sua azienda e che il suo record sia quello da aggiornare.
-
-        // Trova il record collaboratore dell'admin usando l'ID dell'azienda e la vecchia email
-        // (prima dell'aggiornamento, se l'email è cambiata).
-        const oldEmail = currentUser.email; // Email prima di questa operazione di salvataggio
+        const oldEmail = currentUser.email; 
         let adminCollabDocRef;
 
         const qOld = query(adminCollaboratorsRef, where("id_azienda", "==", currentUser.uid), where("email", "==", oldEmail));
@@ -484,15 +499,10 @@ export default function SettingsPage() {
           adminCollabDocRef = oldAdminCollabSnapshot.docs[0].ref;
           await updateDoc(adminCollabDocRef, { 
             nome_completo: adminDisplayNameForUpdate,
-            email: adminEmailForQuery, // Aggiorna all'email corrente (potrebbe essere nuova)
+            email: adminEmailForQuery, 
             ruolo: "Amministratore" 
           });
         } else {
-          // Se non trovato con la vecchia email (improbabile se ensureAdminCollaboratorExists funziona),
-          // o se l'email è cambiata e vogliamo creare un nuovo record (meno ideale),
-          // per ora tentiamo di creare se non esiste.
-          // Idealmente, `ensureAdminCollaboratorExists` dovrebbe gestire la creazione.
-          // Questo blocco 'else' è un fallback.
           const qNew = query(adminCollaboratorsRef, where("id_azienda", "==", currentUser.uid), where("email", "==", adminEmailForQuery));
           const newAdminCollabSnapshot = await getDocs(qNew);
           if (newAdminCollabSnapshot.empty) {
@@ -504,7 +514,6 @@ export default function SettingsPage() {
               data_creazione: serverTimestamp(),
             });
           } else {
-            // Esiste già un record con la nuova email, aggiorniamolo (potrebbe essere lo stesso admin)
             adminCollabDocRef = newAdminCollabSnapshot.docs[0].ref;
              await updateDoc(adminCollabDocRef, { 
                 nome_completo: adminDisplayNameForUpdate,
@@ -571,14 +580,12 @@ export default function SettingsPage() {
   const handleUpdateCollaborator = async (collaboratorId: string, data: CollaboratorEditFormValues) => {
     if (!companyId || !currentUser) return;
 
-    // Impedisci la modifica dell'email del collaboratore-admin se l'email è diversa da quella dell'admin Auth corrente.
     const collaboratorToUpdate = collaborators.find(c => c.id === collaboratorId);
     if (collaboratorToUpdate?.email === currentUser.email && data.email !== currentUser.email && collaboratorToUpdate.ruolo === "Amministratore") {
         toast({title: "Azione non permessa", description: "L'email del profilo Amministratore principale deve essere modificata tramite il form 'Profilo Utente Amministratore'.", variant: "destructive"});
         throw new Error("Cannot change primary admin email here.");
     }
     
-    // Controllo unicità email se l'email viene cambiata
     if (data.email !== collaboratorToUpdate?.email) {
       const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", companyId), where("email", "==", data.email));
       const emailCheckSnapshot = await getDocs(q);
@@ -623,6 +630,8 @@ export default function SettingsPage() {
       throw error; 
     }
   };
+
+  const canEditAdminProfile = activeCollaboratorRole === "Amministratore";
 
 
   if (loadingData) {
@@ -816,7 +825,7 @@ export default function SettingsPage() {
                           <FormControl>
                              <div className="relative">
                                 <UserCircle className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input {...field} className="pl-10" disabled={isSavingProfile} />
+                                <Input {...field} className="pl-10" disabled={isSavingProfile || !canEditAdminProfile} />
                               </div>
                           </FormControl>
                           <FormMessage />
@@ -832,7 +841,7 @@ export default function SettingsPage() {
                            <FormControl>
                              <div className="relative">
                                 <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input type="email" className="pl-10" {...field} disabled={isSavingProfile} />
+                                <Input type="email" className="pl-10" {...field} disabled={isSavingProfile || !canEditAdminProfile} />
                               </div>
                           </FormControl>
                           <FormMessage />
@@ -848,7 +857,7 @@ export default function SettingsPage() {
                            <FormControl>
                              <div className="relative">
                                 <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input type="password" placeholder="••••••••" className="pl-10" {...field} disabled={isSavingProfile} />
+                                <Input type="password" placeholder="••••••••" className="pl-10" {...field} disabled={isSavingProfile || !canEditAdminProfile} />
                               </div>
                           </FormControl>
                           <FormMessage />
@@ -864,7 +873,7 @@ export default function SettingsPage() {
                            <FormControl>
                              <div className="relative">
                                 <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input type="password" placeholder="••••••••" className="pl-10" {...field} disabled={isSavingProfile} />
+                                <Input type="password" placeholder="••••••••" className="pl-10" {...field} disabled={isSavingProfile || !canEditAdminProfile} />
                               </div>
                           </FormControl>
                           <FormMessage />
@@ -875,7 +884,7 @@ export default function SettingsPage() {
                       <Label htmlFor="userRole">Ruolo Principale</Label>
                       <Input id="userRole" value={"Amministratore Azienda"} disabled />
                     </div>
-                    <Button type="submit" disabled={isSavingProfile} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                    <Button type="submit" disabled={isSavingProfile || !canEditAdminProfile} className="bg-accent hover:bg-accent/90 text-accent-foreground">
                        {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Salva Modifiche Profilo
                     </Button>
