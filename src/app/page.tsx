@@ -60,7 +60,7 @@ export default function LandingPage() {
       features: ["Tutte le funzionalità Incastro", "Gestione completa richieste", "Supporto clienti", "Aggiornamenti inclusi"],
       cta: "Scegli il Piano Annuale",
       href: "/register",
-      highlight: true, // Puoi scegliere di evidenziare il piano annuale
+      highlight: true, 
     },
   ];
 
@@ -86,7 +86,7 @@ export default function LandingPage() {
               Benvenuto su Incastro
             </h1>
             <p className="mb-10 text-lg text-muted-foreground md:text-xl">
-              La piattaforma per ottimizzare la gestione dei tuoi interventi tecnici.
+              Gestione tecnica senza sbatti. Automatizza, assegna, organizza.
             </p>
             <div className="mx-auto max-w-md">
               <LoginForm />
@@ -256,7 +256,7 @@ export default function LandingPage() {
                   <AccordionTrigger className="text-lg font-semibold text-left hover:no-underline px-6 py-4">
                     {item.question}
                   </AccordionTrigger>
-                  <AccordionContent className="text-base text-muted-foreground leading-relaxed pt-0 pb-4 px-6">
+                  <AccordionContent className="text-base text-muted-foreground leading-relaxed pt-2 pb-4 px-6">
                     {item.answer}
                   </AccordionContent>
                 </AccordionItem>
