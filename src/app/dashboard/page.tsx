@@ -15,17 +15,16 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getCountFromServer, getDocs, orderBy, limit, Timestamp, doc, updateDoc } from "firebase/firestore";
 
 interface DashboardStats {
-  activeRequests: number | null; // Null se errore o non caricato
+  activeRequests: number | null; 
   pendingAppointments: number | null;
   techniciansAvailable: number | null;
 }
 
-// Export this interface to be used by RequestDetailsSheet
 export interface RecentRequest {
   id: string;
-  customer: string; // from nome_cliente
-  service: string;  // from tipo_servizio
-  status: string;   // from stato
+  customer: string; 
+  service: string;  
+  status: string;   
   created_at?: Timestamp; 
   note_aggiuntive?: string;
   indirizzo_intervento?: string;
@@ -53,7 +52,6 @@ export default function DashboardPage() {
   });
   const [loadingRequests, setLoadingRequests] = useState(true);
 
-  // State for the RequestDetailsSheet
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RecentRequest | null>(null);
 
@@ -90,7 +88,7 @@ export default function DashboardPage() {
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "==", "in attesa") // CORRETTO: usa "in attesa" (minuscolo)
+          where("stato", "not-in", ["completata", "annullata"]) 
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
         setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
@@ -192,14 +190,13 @@ export default function DashboardPage() {
         )
       );
       
-      // Refetch active requests count
       if (companyId) {
         setLoadingStats(prev => ({ ...prev, activeRequests: true }));
         try {
             const activeRequestsQuery = query(
             collection(db, "richieste_clienti"),
             where("id_azienda", "==", companyId),
-            where("stato", "==", "in attesa") // CORRETTO: usa "in attesa" (minuscolo)
+            where("stato", "not-in", ["completata", "annullata"]) 
             );
             const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
             setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
@@ -233,7 +230,6 @@ export default function DashboardPage() {
         </Button>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -246,7 +242,7 @@ export default function DashboardPage() {
             ) : (
               <div className="text-2xl font-bold">{stats.activeRequests ?? 0}</div>
             )}
-            <p className="text-xs text-muted-foreground">Richieste con stato "in attesa"</p>
+            <p className="text-xs text-muted-foreground">Richieste non completate o annullate</p>
           </CardContent>
         </Card>
         <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
@@ -279,7 +275,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Recent Requests Table */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Ultime Richieste</CardTitle>
@@ -349,7 +344,6 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Placeholder for other sections */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg">
           <CardHeader>
@@ -385,4 +379,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
