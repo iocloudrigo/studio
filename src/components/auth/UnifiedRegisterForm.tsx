@@ -31,13 +31,13 @@ const generateSlug = (name: string): string => {
   return name
     .toLowerCase()
     .trim()
-    .replace(/\s+/g, '-') // Sostituisce spazi con trattini
-    .replace(/[^\w-]+/g, '') // Rimuove caratteri non alfanumerici eccetto trattini
-    .replace(/--+/g, '-'); // Sostituisce trattini multipli con singoli
+    .replace(/\s+/g, '-')
+    .replace(/[^\w-]+/g, '')
+    .replace(/--+/g, '-');
 };
 
 const unifiedRegisterFormSchema = z.object({
-  adminName: z.string().min(2, { message: "Il nome dell'amministratore è richiesto." }),
+  adminName: z.string().min(2, { message: "Il Tuo Nome e Cognome è richiesto." }),
   email: z.string().email({ message: "Indirizzo email non valido." }),
   password: z.string().optional(),
   confirmPassword: z.string().optional(),
@@ -50,15 +50,21 @@ const unifiedRegisterFormSchema = z.object({
   activitySector: z.string().optional(),
   companyCity: z.string().optional(),
 }).refine(data => {
-  if (!data.password && !auth.currentUser) return false; // Password richiesta se non c'è un utente pre-autenticato
-  if (data.password && data.password.length < 6) return false;
+  // Se prefilledUser (currentUser) non è fornito, la password è obbligatoria
+  if (!auth.currentUser && (!data.password || data.password.length < 6)) {
+    return false;
+  }
+  // Se la password è fornita (anche con prefilledUser, nel caso volesse cambiarla), deve essere lunga almeno 6 caratteri
+  if (data.password && data.password.length < 6) {
+    return false;
+  }
   return true;
 }, {
   message: "La password deve contenere almeno 6 caratteri.",
   path: ["password"],
 }).refine(data => {
   if (data.password) return data.password === data.confirmPassword;
-  return true; // Nessuna validazione se la password non è fornita (es. utente Google)
+  return true;
 }, {
   message: "Le password non coincidono.",
   path: ["confirmPassword"],
@@ -98,7 +104,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       companyName: "",
       slug: "",
       companyPhone: "",
-      activitySector: "unspecified",
+      activitySector: "", // Inizializza vuoto per far funzionare il placeholder del Select
       companyCity: "",
     },
   });
@@ -108,12 +114,12 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       form.reset({
         adminName: prefilledUser.displayName || "",
         email: prefilledUser.email || "",
-        password: "",
+        password: "", // Password non precompilata per sicurezza
         confirmPassword: "",
         companyName: "",
         slug: "",
         companyPhone: "",
-        activitySector: "unspecified",
+        activitySector: "",
         companyCity: "",
       });
     }
@@ -140,17 +146,20 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
     let userEmailToUse: string | undefined = prefilledUser?.email || undefined;
     let userDisplayNameToUse: string | undefined = prefilledUser?.displayName || data.adminName;
 
+    // Se prefilledUser non è fornito, significa che stiamo creando un nuovo utente con email/password
     if (!prefilledUser) {
       if (!data.password || data.password.length < 6) {
         form.setError("password", {type: "manual", message: "La password deve contenere almeno 6 caratteri."});
         setIsLoading(false);
         toast({ title: "Errore Registrazione", description: "La password deve contenere almeno 6 caratteri.", variant: "destructive" });
+        console.error("Errore: Password troppo corta.");
         return;
       }
       if (data.password !== data.confirmPassword) {
         form.setError("confirmPassword", {type: "manual", message: "Le password non coincidono."});
         setIsLoading(false);
         toast({ title: "Errore Registrazione", description: "Le password non coincidono.", variant: "destructive" });
+        console.error("Errore: Le password non coincidono.");
         return;
       }
     }
@@ -163,7 +172,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
           const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password!);
           userIdToUse = userCredential.user.uid;
           userEmailToUse = userCredential.user.email!;
-          userDisplayNameToUse = data.adminName;
+          userDisplayNameToUse = data.adminName; // Nome dall'input
 
           await updateProfile(userCredential.user, { displayName: userDisplayNameToUse });
           console.log("New user created successfully with Firebase Auth:", userIdToUse);
@@ -178,7 +187,20 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
           setIsLoading(false);
           return;
         }
+      } else {
+         // Se prefilledUser (es. da Google), aggiorniamo il displayName se è stato modificato nel form
+        if (data.adminName !== prefilledUser.displayName && prefilledUser.uid) {
+           try {
+            await updateProfile(auth.currentUser!, { displayName: data.adminName });
+            userDisplayNameToUse = data.adminName;
+            console.log("DisplayName aggiornato per utente pre-autenticato:", data.adminName);
+           } catch (updateError) {
+            console.error("Errore aggiornamento displayName per utente pre-autenticato:", updateError);
+            // Non blocchiamo la registrazione dell'azienda per questo, ma logghiamo l'errore
+           }
+        }
       }
+
 
       if (!userIdToUse || !userEmailToUse) {
         console.error("User ID or Email is undefined after auth step.");
@@ -189,10 +211,12 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       console.log("User ID for Firestore:", userIdToUse, "User Email:", userEmailToUse, "User Display Name:", userDisplayNameToUse);
 
       const finalSlug = generateSlug(data.slug);
+      // Aggiorna il valore nel form se è stato normalizzato, per coerenza
       if (finalSlug !== data.slug) {
           form.setValue("slug", finalSlug, { shouldValidate: true });
       }
 
+      // Rivalida i dati con lo slug normalizzato
       const validationResult = unifiedRegisterFormSchema.safeParse({...data, slug: finalSlug});
       if (!validationResult.success) {
           console.error("Form validation failed after slug normalization:", validationResult.error.flatten().fieldErrors);
@@ -217,7 +241,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       let slugTakenByOther = false;
       if (!slugQuerySnapshot.empty) {
         slugQuerySnapshot.forEach(docSnap => {
-          if (docSnap.id !== userIdToUse) { // Se lo slug è usato da un'ALTRA azienda
+          if (docSnap.id !== userIdToUse) { // Lo slug è usato da un'ALTRA azienda
             slugTakenByOther = true;
           }
         });
@@ -240,6 +264,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
         telefono_contatto: data.companyPhone || null,
         settore_attivita: data.activitySector === "unspecified" || !data.activitySector ? null : data.activitySector,
         sede_citta: data.companyCity || null,
+        contatore_richieste: 0,
         data_creazione: serverTimestamp(),
       };
 
@@ -248,15 +273,17 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       await setDoc(companyDocRef, companyDataToSave);
       console.log("Company data saved successfully to Firestore for document ID:", userIdToUse);
 
+      // Aggiungi l'amministratore come primo collaboratore
       const adminCollaboratorData = {
         id_azienda: userIdToUse,
-        nome_completo: userDisplayNameToUse, // Usare il nome admin fornito/da Google
+        nome_completo: userDisplayNameToUse,
         email: userEmailToUse,
         ruolo: "Amministratore",
         data_creazione: serverTimestamp(),
       };
       await addDoc(collection(db, "collaboratori_azienda"), adminCollaboratorData);
       console.log("Admin collaborator entry created for:", userEmailToUse);
+
 
       toast({
         title: "Registrazione Completata!",
@@ -272,12 +299,13 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
         description: `Si è verificato un errore imprevisto: ${error.message || "Riprova più tardi."}`,
         variant: "destructive",
       });
-       setIsLoading(false); // Assicurati che isLoading sia false in caso di errore
+    } finally {
+       setIsLoading(false);
     }
   };
 
   return (
-    <Card className="w-full max-w-lg shadow-xl">
+    <Card className="w-full max-w-3xl mx-auto shadow-xl">
       <CardHeader className="space-y-1 text-center">
         <CardTitle className="text-2xl">
           Crea il Tuo Account e Registra l'Azienda
@@ -304,7 +332,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                             placeholder="Mario Rossi"
                             {...field}
                             className="pl-10"
-                            disabled={isLoading || !!prefilledUser?.displayName}
+                            disabled={isLoading || (!!prefilledUser && !!prefilledUser.displayName)}
                           />
                         </div>
                       </FormControl>
@@ -323,6 +351,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                         <div className="relative">
                           <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                           <Input
+                            type="email"
                             placeholder="admin@azienda.com"
                             {...field}
                             className="pl-10"
@@ -346,9 +375,10 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                           <div className="relative">
                             <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
+                              type="email"
                               {...field}
                               className="pl-10"
-                              disabled={true}
+                              disabled={true} // Sempre disabilitato se prefilledUser esiste
                               readOnly={true}
                             />
                           </div>
@@ -429,24 +459,27 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                             {...field}
                             className="pl-10"
                             disabled={isLoading}
-                            onBlur={(e) => {
+                            onBlur={(e) => { // Normalizza lo slug quando il campo perde il focus
                                 const manualSlug = generateSlug(e.target.value);
-                                if (e.target.value.trim() === "" && companyNameValue) {
+                                // Se l'utente cancella tutto, rigenera dallo companyName (se presente)
+                                if (e.target.value.trim() === "" && companyNameValue) { 
                                     field.onChange(generateSlug(companyNameValue));
-                                    form.trigger("slug");
+                                    form.trigger("slug"); // Forza ri-validazione se necessario
                                 } else if (e.target.value.trim() !== "" && e.target.value !== manualSlug) {
+                                    // Se l'utente ha scritto qualcosa ma non è uno slug valido, normalizzalo
                                     field.onChange(manualSlug);
                                     form.trigger("slug");
                                 }
-                                setIsSlugManuallyEdited(true);
-                                field.onBlur();
+                                setIsSlugManuallyEdited(true); // Una volta modificato, consideralo manuale
+                                field.onBlur(); // Chiama l'onBlur originale di react-hook-form
                             }}
                             onChange={(e) => {
-                                field.onChange(e.target.value);
+                                field.onChange(e.target.value); // Aggiorna il valore del form
+                                // Se lo slug viene modificato e non corrisponde più a quello generato, consideralo manuale
                                 if (!isSlugManuallyEdited && e.target.value !== generateSlug(companyNameValue) ) {
                                     setIsSlugManuallyEdited(true);
                                 }
-                                form.clearErrors('slug');
+                                 form.clearErrors('slug'); // Pulisce errori precedenti mentre l'utente scrive
                             }}
                         />
                         </div>
@@ -488,7 +521,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                     <FormLabel>Settore Attività <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
                     <Select
                       onValueChange={field.onChange}
-                      value={field.value || "unspecified"}
+                      value={field.value || ""} // Usa stringa vuota per il placeholder
                       disabled={isLoading}
                     >
                       <FormControl>
@@ -548,5 +581,3 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
     </Card>
   );
 }
-
-    
