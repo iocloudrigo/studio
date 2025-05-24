@@ -164,7 +164,7 @@ export default function LandingPage() {
                 </li>
               </ul>
               <p className="mt-4 text-muted-foreground">
-                Che tu sia da solo o gestisca un team, Incastro si adatta ai tuoi ritmi.
+                Che tu sia da solo o in team, Incastro si adatta ai ritmi.
               </p>
             </div>
           </div>
