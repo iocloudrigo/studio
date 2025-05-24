@@ -21,8 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Mail, Lock, Loader2, Briefcase, Link as LinkIcon, Building, Phone } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useCallback } from "react";
-import { type User as FirebaseUser, createUserWithEmailAndPassword } from "firebase/auth";
+import { useState, useEffect } from "react";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, serverTimestamp, getDocs, collection, query, where } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
@@ -36,37 +36,24 @@ const generateSlug = (name: string): string => {
     .replace(/--+/g, '-'); 
 };
 
-const unifiedRegisterFormSchemaBase = {
+const unifiedRegisterFormSchema = z.object({
+  email: z.string().email({ message: "Indirizzo email non valido." }),
+  password: z.string().min(6, { message: "La password deve contenere almeno 6 caratteri." }),
+  confirmPassword: z.string(),
   companyName: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
   slug: z.string()
     .min(1, { message: "Lo slug è richiesto." })
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: "Slug non valido. Usa solo lettere minuscole, numeri e trattini singoli." })
     .refine(s => !s.startsWith('-') && !s.endsWith('-'), { message: "Lo slug non può iniziare o finire con un trattino." }),
   companyPhone: z.string().optional(),
-  activitySector: z.string().optional(), // No longer .min(1) to allow "Non specificato" which has value ""
+  activitySector: z.string().optional(),
   companyCity: z.string().optional(),
-};
-
-const UnifiedRegisterFormSchemaNewUser = z.object({
-  email: z.string().email({ message: "Indirizzo email non valido." }),
-  password: z.string().min(6, { message: "La password deve contenere almeno 6 caratteri." }),
-  confirmPassword: z.string(),
-  ...unifiedRegisterFormSchemaBase,
 }).refine(data => data.password === data.confirmPassword, {
   message: "Le password non coincidono.",
   path: ["confirmPassword"],
 });
 
-const UnifiedRegisterFormSchemaExistingUser = z.object({
-  email: z.string().email(), 
-  ...unifiedRegisterFormSchemaBase,
-});
-
-type UnifiedRegisterFormValues = z.infer<typeof UnifiedRegisterFormSchemaNewUser>;
-
-interface UnifiedRegisterFormProps {
-  currentUser: FirebaseUser | null;
-}
+type UnifiedRegisterFormValues = z.infer<typeof unifiedRegisterFormSchema>;
 
 const activitySectorOptions = [
   { value: "unspecified", label: "Non specificato" },
@@ -77,34 +64,28 @@ const activitySectorOptions = [
   { value: "altro", label: "Altro" },
 ];
 
-export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
+export function UnifiedRegisterForm() {
   const { toast } = useToast();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
 
   const form = useForm<UnifiedRegisterFormValues>({
-    resolver: zodResolver(currentUser ? UnifiedRegisterFormSchemaExistingUser : UnifiedRegisterFormSchemaNewUser),
+    resolver: zodResolver(unifiedRegisterFormSchema),
     defaultValues: {
-      email: currentUser?.email || "",
+      email: "",
       password: "",
       confirmPassword: "",
       companyName: "",
       slug: "",
       companyPhone: "",
-      activitySector: "unspecified", // Default to "unspecified"
+      activitySector: "unspecified",
       companyCity: "",
     },
   });
 
   const companyNameValue = form.watch("companyName");
   const slugValue = form.watch("slug");
-
-  useEffect(() => {
-    if (currentUser) {
-      form.setValue("email", currentUser.email || "");
-    }
-  }, [currentUser, form]);
 
   useEffect(() => {
     if (!isSlugManuallyEdited && companyNameValue && !form.formState.dirtyFields.slug) {
@@ -123,35 +104,29 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
     let userEmailToUse: string | undefined = undefined;
 
     try {
-      if (currentUser) {
-        console.log("Completing profile for existing user:", currentUser.uid);
-        userIdToUse = currentUser.uid;
-        userEmailToUse = currentUser.email || data.email; 
-      } else {
-        console.log("Attempting new user registration with email:", data.email);
-        if (!data.password) {
-          form.setError("password", {type: "manual", message: "La password è richiesta."});
-          setIsLoading(false);
-          console.error("Password field is empty for new user registration.");
-          toast({ title: "Errore Registrazione", description: "La password è richiesta.", variant: "destructive" });
-          return;
-        }
-        try {
-          const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-          userIdToUse = userCredential.user.uid;
-          userEmailToUse = userCredential.user.email!;
-          console.log("New user created successfully with Firebase Auth:", userIdToUse);
-        } catch (authError: any) {
-          console.error("Errore creazione utente Firebase Auth:", authError);
-          let errorMessage = "Errore durante la creazione dell'utente. Riprova.";
-          if (authError.code === "auth/email-already-in-use") errorMessage = "L'indirizzo email è già in uso.";
-          else if (authError.code === "auth/weak-password") errorMessage = "La password è troppo debole.";
-          else if (authError.code === "auth/invalid-email") errorMessage = "L'indirizzo email non è valido.";
-          else errorMessage = `Errore Auth: ${authError.message}`;
-          toast({ title: "Errore Registrazione Utente", description: errorMessage, variant: "destructive" });
-          setIsLoading(false);
-          return;
-        }
+      console.log("Attempting new user registration with email:", data.email);
+      if (!data.password) {
+        form.setError("password", {type: "manual", message: "La password è richiesta."});
+        setIsLoading(false);
+        console.error("Password field is empty for new user registration.");
+        toast({ title: "Errore Registrazione", description: "La password è richiesta.", variant: "destructive" });
+        return;
+      }
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+        userIdToUse = userCredential.user.uid;
+        userEmailToUse = userCredential.user.email!;
+        console.log("New user created successfully with Firebase Auth:", userIdToUse);
+      } catch (authError: any) {
+        console.error("Errore creazione utente Firebase Auth:", authError);
+        let errorMessage = "Errore durante la creazione dell'utente. Riprova.";
+        if (authError.code === "auth/email-already-in-use") errorMessage = "L'indirizzo email è già in uso.";
+        else if (authError.code === "auth/weak-password") errorMessage = "La password è troppo debole.";
+        else if (authError.code === "auth/invalid-email") errorMessage = "L'indirizzo email non è valido.";
+        else errorMessage = `Errore Auth: ${authError.message}`;
+        toast({ title: "Errore Registrazione Utente", description: errorMessage, variant: "destructive" });
+        setIsLoading(false);
+        return;
       }
       
       if (!userIdToUse || !userEmailToUse) {
@@ -168,13 +143,11 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
           form.setValue("slug", finalSlug, { shouldValidate: true });
       }
 
-      const currentSchema = currentUser ? UnifiedRegisterFormSchemaExistingUser : UnifiedRegisterFormSchemaNewUser;
-      const validationResult = currentSchema.safeParse({...data, slug: finalSlug}); // Validate with the normalized slug
+      const validationResult = unifiedRegisterFormSchema.safeParse({...data, slug: finalSlug}); 
 
       if (!validationResult.success) {
           console.error("Form validation failed after slug normalization:", validationResult.error.flatten().fieldErrors);
           const fieldErrors = validationResult.error.flatten().fieldErrors;
-          // Set errors for each field
           (Object.keys(fieldErrors) as Array<keyof typeof fieldErrors>).forEach((key) => {
             const messages = fieldErrors[key];
             if (messages && messages.length > 0) {
@@ -187,10 +160,10 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
       }
       console.log("Form data validated successfully after slug normalization.");
 
-
       console.log("Querying Firestore for slug uniqueness:", finalSlug);
       const aziendeRef = collection(db, "aziende");
-      const q = query(aziendeRef, where("slug", "==", finalSlug), where("uid_admin", "!=", userIdToUse)); // Check slug not taken by OTHERS
+      // Check if slug is taken by ANY company, as this is a new company registration.
+      const q = query(aziendeRef, where("slug", "==", finalSlug)); 
       const querySnapshot = await getDocs(q);
       
       if (!querySnapshot.empty) {
@@ -200,7 +173,7 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
         setIsLoading(false);
         return;
       }
-      console.log("Slug is unique or belongs to the current user (which is fine for update, but this is create).");
+      console.log("Slug is unique.");
 
       const companyDataToSave = {
         uid_admin: userIdToUse,
@@ -232,23 +205,18 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
         description: `Si è verificato un errore imprevisto: ${error.message || "Riprova più tardi."}`,
         variant: "destructive",
       });
-      setIsLoading(false); // Ensure isLoading is set to false even on unexpected errors
-    } 
-    // Removed finally block as setIsLoading(false) is handled in all caught paths and after success before redirect.
-    // If router.push happens before setIsLoading(false), the state update might be lost on unmount.
-    // So, if not redirecting due to error, isLoading must be set to false.
-    // If redirecting on success, it's fine if isLoading is still true during unmount.
-    // The current structure sets isLoading to false on errors.
+      setIsLoading(false); 
+    }
   };
 
   return (
     <Card className="w-full max-w-lg shadow-xl">
       <CardHeader className="space-y-1 text-center">
         <CardTitle className="text-2xl">
-          {currentUser ? "Completa la Registrazione della Tua Azienda" : "Crea il Tuo Account e Registra l'Azienda"}
+          Crea il Tuo Account e Registra l'Azienda
         </CardTitle>
         <CardDescription>
-          {currentUser ? "Inserisci i dettagli della tua azienda." : "Compila i campi per iniziare."}
+          Compila i campi per iniziare.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -267,8 +235,7 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
                         placeholder="admin@azienda.com" 
                         {...field} 
                         className="pl-10" 
-                        readOnly={!!currentUser} 
-                        disabled={isLoading || !!currentUser} 
+                        disabled={isLoading} 
                       />
                     </div>
                   </FormControl>
@@ -276,44 +243,38 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
                 </FormItem>
               )}
             />
-
-            {!currentUser && (
-              <>
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input type="password" placeholder="••••••••" {...field} className="pl-10" disabled={isLoading} />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="confirmPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Conferma Password</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input type="password" placeholder="••••••••" {...field} className="pl-10" disabled={isLoading} />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </>
-            )}
-
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" disabled={isLoading} />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Conferma Password</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input type="password" placeholder="••••••••" {...field} className="pl-10" disabled={isLoading} />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="companyName"
@@ -330,7 +291,6 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="slug"
@@ -348,8 +308,8 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
                         onBlur={(e) => { 
                             const manualSlug = generateSlug(e.target.value);
                             if (e.target.value !== manualSlug) {
-                                field.onChange(manualSlug); // Update form with normalized slug
-                                form.trigger("slug"); // Re-validate the slug field
+                                field.onChange(manualSlug); 
+                                form.trigger("slug"); 
                             }
                             setIsSlugManuallyEdited(true); 
                             field.onBlur(); 
@@ -374,7 +334,6 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="companyPhone"
@@ -391,7 +350,6 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="activitySector"
@@ -400,7 +358,7 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
                   <FormLabel>Settore Attività <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
                   <Select 
                     onValueChange={field.onChange} 
-                    value={field.value || "unspecified"} // Ensure a valid value is always passed
+                    value={field.value || "unspecified"} 
                     disabled={isLoading}
                   >
                     <FormControl>
@@ -423,7 +381,6 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
                 </FormItem>
               )}
             />
-            
             <FormField
               control={form.control}
               name="companyCity"
@@ -440,27 +397,22 @@ export function UnifiedRegisterForm({ currentUser }: UnifiedRegisterFormProps) {
                 </FormItem>
               )}
             />
-
             <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isLoading}>
-              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (currentUser ? "Salva Azienda e Vai alla Dashboard" : "Registrati e Vai alla Dashboard")}
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Registrati e Vai alla Dashboard"}
             </Button>
           </form>
         </Form>
       </CardContent>
-      {!currentUser && (
-        <CardFooter className="flex flex-col items-center space-y-2">
-            <p className="text-sm text-muted-foreground">
-                Hai già un account?{' '}
-                <Button variant="link" asChild className="text-accent p-0 h-auto">
-                <Link href="/">
-                    Accedi
-                </Link>
-                </Button>
-            </p>
-        </CardFooter>
-      )}
+      <CardFooter className="flex flex-col items-center space-y-2">
+          <p className="text-sm text-muted-foreground">
+              Hai già un account?{' '}
+              <Button variant="link" asChild className="text-accent p-0 h-auto">
+              <Link href="/">
+                  Accedi
+              </Link>
+              </Button>
+          </p>
+      </CardFooter>
     </Card>
   );
 }
-
-    

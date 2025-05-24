@@ -12,7 +12,8 @@ import { doc, getDoc } from 'firebase/firestore';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  // currentUser state is not strictly needed here anymore as UnifiedRegisterForm doesn't take it as a prop.
+  // However, this onAuthStateChanged logic is useful to redirect already logged-in and company-registered users.
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -20,22 +21,22 @@ export default function RegisterPage() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setAuthChecked(true);
       if (user) {
-        setCurrentUser(user);
         // User is logged in. Check if company already exists.
-        // If company exists, they shouldn't be on this page (AuthRedirectHandler should manage this for other routes).
-        // If they land here directly and company exists, redirect to dashboard.
+        // If company exists, they shouldn't be on this page.
         const companyDocRef = doc(db, "aziende", user.uid);
         const companyDocSnap = await getDoc(companyDocRef);
         if (companyDocSnap.exists()) {
-          router.replace('/dashboard');
+          router.replace('/dashboard'); // Redirect to dashboard if company already registered
         } else {
-          // No company profile found, allow to complete registration.
-          // The form will use currentUser to prefill email.
+          // No company profile found, but user is logged in (e.g. from a previous session attempt).
+          // This scenario is less likely with Google Auth removed.
+          // For now, allow to stay on register page; UnifiedRegisterForm will handle new user creation.
+          // If the user logged in via a different tab and then came here, they could see this.
+          // The form itself will force new credential entry.
           setLoading(false);
         }
       } else {
         // No user logged in, show form for new full registration.
-        setCurrentUser(null);
         setLoading(false);
       }
     });
@@ -55,7 +56,7 @@ export default function RegisterPage() {
 
   return (
     <AuthLayout>
-      <UnifiedRegisterForm currentUser={currentUser} />
+      <UnifiedRegisterForm />
     </AuthLayout>
   );
 }
