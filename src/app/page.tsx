@@ -90,7 +90,7 @@ export default function LandingPage() {
                 </li>
                 <li className="flex items-center">
                   <CheckCircle className="mr-2 h-5 w-5 text-accent" />
-                  Aziende di servizi multiservizi
+                  Aziende multiservizi
                 </li>
                 <li className="flex items-center">
                   <Target className="mr-2 h-5 w-5 text-accent" />
