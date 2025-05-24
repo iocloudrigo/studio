@@ -31,15 +31,15 @@ const generateSlug = (name: string): string => {
   return name
     .toLowerCase()
     .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^\w-]+/g, '')
-    .replace(/--+/g, '-');
+    .replace(/\s+/g, '-') // Sostituisce spazi con trattini
+    .replace(/[^\w-]+/g, '') // Rimuove caratteri non alfanumerici eccetto trattini
+    .replace(/--+/g, '-'); // Sostituisce trattini multipli con singoli
 };
 
 const unifiedRegisterFormSchema = z.object({
   adminName: z.string().min(2, { message: "Il nome dell'amministratore è richiesto." }),
   email: z.string().email({ message: "Indirizzo email non valido." }),
-  password: z.string().optional(), // Opzionale perché può essere pre-autenticato
+  password: z.string().optional(),
   confirmPassword: z.string().optional(),
   companyName: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
   slug: z.string()
@@ -50,24 +50,24 @@ const unifiedRegisterFormSchema = z.object({
   activitySector: z.string().optional(),
   companyCity: z.string().optional(),
 }).refine(data => {
-  // La validazione della password è necessaria solo se l'utente non è pre-autenticato
-  if (!data.password && !data.confirmPassword) return true; // Se non ci sono password, va bene
-  if (data.password && data.password.length < 6) {
-    // Questo errore dovrebbe essere gestito a livello di campo, ma lo mettiamo qui per sicurezza
-    return false; // Password troppo corta
-  }
-  return data.password === data.confirmPassword;
-}, {
-  message: "Le password non coincidono o la nuova password è troppo corta (min. 6 caratteri).",
-  path: ["confirmPassword"], // O path: ["password"] se preferisci l'errore sulla prima
-}).refine(data => {
-  // Se password è fornita, confirmPassword deve esserlo anche
-  if (data.password && !data.confirmPassword) return false;
-  if (!data.password && data.confirmPassword) return false; // Meno probabile ma per completezza
+  if (!data.password && !auth.currentUser) return false; // Password richiesta se non c'è un utente pre-autenticato
+  if (data.password && data.password.length < 6) return false;
   return true;
 }, {
-  message: "Conferma password è richiesta se la password è inserita.",
-  path: ["confirmPassword"]
+  message: "La password deve contenere almeno 6 caratteri.",
+  path: ["password"],
+}).refine(data => {
+  if (data.password) return data.password === data.confirmPassword;
+  return true; // Nessuna validazione se la password non è fornita (es. utente Google)
+}, {
+  message: "Le password non coincidono.",
+  path: ["confirmPassword"],
+}).refine(data => {
+    if (data.password && !data.confirmPassword) return false;
+    return true;
+}, {
+    message: "Conferma password è richiesta se la password è inserita.",
+    path: ["confirmPassword"]
 });
 
 
@@ -108,7 +108,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       form.reset({
         adminName: prefilledUser.displayName || "",
         email: prefilledUser.email || "",
-        password: "", // Le password non vengono precompilate
+        password: "",
         confirmPassword: "",
         companyName: "",
         slug: "",
@@ -140,7 +140,6 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
     let userEmailToUse: string | undefined = prefilledUser?.email || undefined;
     let userDisplayNameToUse: string | undefined = prefilledUser?.displayName || data.adminName;
 
-    // Validazione password specifica se non c'è un utente pre-autenticato
     if (!prefilledUser) {
       if (!data.password || data.password.length < 6) {
         form.setError("password", {type: "manual", message: "La password deve contenere almeno 6 caratteri."});
@@ -161,7 +160,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       if (!prefilledUser) {
         console.log("Attempting new user registration with email:", data.email);
         try {
-          const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password!); // data.password è sicuro qui
+          const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password!);
           userIdToUse = userCredential.user.uid;
           userEmailToUse = userCredential.user.email!;
           userDisplayNameToUse = data.adminName;
@@ -218,7 +217,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       let slugTakenByOther = false;
       if (!slugQuerySnapshot.empty) {
         slugQuerySnapshot.forEach(docSnap => {
-          if (docSnap.id !== userIdToUse) {
+          if (docSnap.id !== userIdToUse) { // Se lo slug è usato da un'ALTRA azienda
             slugTakenByOther = true;
           }
         });
@@ -241,7 +240,6 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
         telefono_contatto: data.companyPhone || null,
         settore_attivita: data.activitySector === "unspecified" || !data.activitySector ? null : data.activitySector,
         sede_citta: data.companyCity || null,
-        contatore_richieste: 0,
         data_creazione: serverTimestamp(),
       };
 
@@ -252,7 +250,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
 
       const adminCollaboratorData = {
         id_azienda: userIdToUse,
-        nome_completo: userDisplayNameToUse,
+        nome_completo: userDisplayNameToUse, // Usare il nome admin fornito/da Google
         email: userEmailToUse,
         ruolo: "Amministratore",
         data_creazione: serverTimestamp(),
@@ -274,8 +272,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
         description: `Si è verificato un errore imprevisto: ${error.message || "Riprova più tardi."}`,
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
+       setIsLoading(false); // Assicurati che isLoading sia false in caso di errore
     }
   };
 
@@ -298,7 +295,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                   control={form.control}
                   name="adminName"
                   render={({ field }) => (
-                    <FormItem className={`${!prefilledUser ? "" : "md:col-span-2"}`}>
+                    <FormItem className={`${prefilledUser?.displayName ? "md:col-span-2" : ""}`}>
                       <FormLabel>Il Tuo Nome e Cognome <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
                         <div className="relative">
@@ -351,8 +348,8 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                             <Input
                               {...field}
                               className="pl-10"
-                              disabled={true} // Sempre disabilitato se prefilledUser
-                              readOnly={true}  // Sempre readonly se prefilledUser
+                              disabled={true}
+                              readOnly={true}
                             />
                           </div>
                         </FormControl>
@@ -401,68 +398,70 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
             )}
 
             {/* Sezione Dettagli Azienda */}
-            <FormField
-              control={form.control}
-              name="companyName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nome Azienda <span className="text-destructive">*</span></FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Briefcase className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input placeholder="Es: Idraulica Rossi S.R.L." {...field} className="pl-10" disabled={isLoading} />
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="slug"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Slug Pubblico Azienda <span className="text-destructive">*</span></FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <LinkIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        placeholder="es: idraulica-rossi"
-                        {...field}
-                        className="pl-10"
-                        disabled={isLoading}
-                        onBlur={(e) => {
-                            const manualSlug = generateSlug(e.target.value);
-                            if (e.target.value.trim() === "" && companyNameValue) {
-                                field.onChange(generateSlug(companyNameValue));
-                                form.trigger("slug");
-                            } else if (e.target.value.trim() !== "" && e.target.value !== manualSlug) {
-                                field.onChange(manualSlug);
-                                form.trigger("slug");
-                            }
-                            setIsSlugManuallyEdited(true);
-                            field.onBlur();
-                        }}
-                        onChange={(e) => {
-                            field.onChange(e.target.value);
-                            if (!isSlugManuallyEdited && e.target.value !== generateSlug(companyNameValue) ) {
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                <FormField
+                control={form.control}
+                name="companyName"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Nome Azienda <span className="text-destructive">*</span></FormLabel>
+                    <FormControl>
+                        <div className="relative">
+                        <Briefcase className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input placeholder="Es: Idraulica Rossi S.R.L." {...field} className="pl-10" disabled={isLoading} />
+                        </div>
+                    </FormControl>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+                <FormField
+                control={form.control}
+                name="slug"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Slug Pubblico Azienda <span className="text-destructive">*</span></FormLabel>
+                    <FormControl>
+                        <div className="relative">
+                        <LinkIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            placeholder="es: idraulica-rossi"
+                            {...field}
+                            className="pl-10"
+                            disabled={isLoading}
+                            onBlur={(e) => {
+                                const manualSlug = generateSlug(e.target.value);
+                                if (e.target.value.trim() === "" && companyNameValue) {
+                                    field.onChange(generateSlug(companyNameValue));
+                                    form.trigger("slug");
+                                } else if (e.target.value.trim() !== "" && e.target.value !== manualSlug) {
+                                    field.onChange(manualSlug);
+                                    form.trigger("slug");
+                                }
                                 setIsSlugManuallyEdited(true);
-                            }
-                             form.clearErrors('slug');
-                        }}
-                      />
-                    </div>
-                  </FormControl>
-                  <FormDescription>
-                    L'URL pubblico per ricevere richieste clienti sarà:
-                    <code className="font-semibold text-primary text-xs break-all ml-1">
-                      /richiedi-intervento?azienda={generateSlug(slugValue) || "..."}
-                    </code>
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                                field.onBlur();
+                            }}
+                            onChange={(e) => {
+                                field.onChange(e.target.value);
+                                if (!isSlugManuallyEdited && e.target.value !== generateSlug(companyNameValue) ) {
+                                    setIsSlugManuallyEdited(true);
+                                }
+                                form.clearErrors('slug');
+                            }}
+                        />
+                        </div>
+                    </FormControl>
+                    <FormDescription>
+                        L'URL pubblico per ricevere richieste clienti sarà:
+                        <code className="font-semibold text-primary text-xs break-all ml-1">
+                        /richiedi-intervento?azienda={generateSlug(slugValue) || "..."}
+                        </code>
+                    </FormDescription>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
               <FormField
@@ -512,24 +511,24 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
                   </FormItem>
                 )}
               />
+              <FormField
+                control={form.control}
+                name="companyCity"
+                render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Sede Operativa (Città) <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Building className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input placeholder="Es: Milano" {...field} className="pl-10" disabled={isLoading} value={field.value || ""} />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
-            <FormField
-              control={form.control}
-              name="companyCity"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Sede Operativa (Città) <span className="text-xs text-muted-foreground">(Opzionale)</span></FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Building className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input placeholder="Es: Milano" {...field} className="pl-10" disabled={isLoading} value={field.value || ""} />
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
             <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isLoading}>
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Registra e Vai alla Dashboard"}
             </Button>
@@ -549,3 +548,5 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
     </Card>
   );
 }
+
+    
