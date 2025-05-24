@@ -51,6 +51,7 @@ export default function LandingPage() {
       cta: "Inizia con il Piano Mensile",
       href: "/register",
       highlight: false,
+      savingNote: null,
     },
     {
       name: "Annuale",
@@ -60,7 +61,8 @@ export default function LandingPage() {
       features: ["Tutte le funzionalità Incastro", "Gestione completa richieste", "Supporto clienti", "Aggiornamenti inclusi"],
       cta: "Scegli il Piano Annuale",
       href: "/register",
-      highlight: true, 
+      highlight: true,
+      savingNote: "Risparmia oltre il 15%!",
     },
   ];
 
@@ -71,9 +73,9 @@ export default function LandingPage() {
       <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto flex h-16 max-w-screen-lg items-center justify-between px-4">
           <Logo />
-          <Button 
-            asChild 
-            variant="outline" 
+          <Button
+            asChild
+            variant="outline"
             className="border-primary text-primary hover:bg-primary hover:text-primary-foreground hover:shadow-md py-2.5 px-5"
           >
             <Link href="/register">Registrati</Link>
@@ -306,6 +308,11 @@ export default function LandingPage() {
                   )}
                   <h3 className="mb-2 text-2xl font-bold text-center text-primary">{plan.name}</h3>
                   <p className="mb-4 text-center text-muted-foreground">{plan.description}</p>
+                  {plan.savingNote && (
+                    <p className="text-sm text-green-600 font-semibold mb-1 text-center">
+                      {plan.savingNote}
+                    </p>
+                  )}
                   <div className="mb-6 text-center">
                     <span className="text-4xl font-extrabold text-foreground">{plan.price}</span>
                     <span className="text-lg text-muted-foreground">{plan.frequency}</span>
@@ -343,4 +350,3 @@ export default function LandingPage() {
     </div>
   );
 }
-
