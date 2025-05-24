@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Users } from "lucide-react";
+import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity } from "lucide-react"; // Cambiato Users con Activity
 import { Skeleton } from "@/components/ui/skeleton"; 
 import { RequestDetailsSheet } from "@/components/dashboard/requests/RequestDetailsSheet";
 import { useToast } from "@/hooks/use-toast";
@@ -16,8 +16,8 @@ import { collection, query, where, getCountFromServer, getDocs, orderBy, limit, 
 
 interface DashboardStats {
   activeRequests: number | null; 
-  assignedRequests: number | null; // Modificato da pendingAppointments
-  techniciansAvailable: number | null;
+  assignedRequests: number | null; 
+  inProgressRequests: number | null; // Modificato da techniciansAvailable
 }
 
 export interface RecentRequest {
@@ -40,15 +40,15 @@ export default function DashboardPage() {
 
   const [stats, setStats] = useState<DashboardStats>({
     activeRequests: null,
-    assignedRequests: null, // Modificato
-    techniciansAvailable: null,
+    assignedRequests: null, 
+    inProgressRequests: null, // Modificato
   });
   const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([]);
   
   const [loadingStats, setLoadingStats] = useState({
     activeRequests: true,
-    assignedRequests: true, // Modificato
-    techniciansAvailable: true,
+    assignedRequests: true, 
+    inProgressRequests: true, // Modificato
   });
   const [loadingRequests, setLoadingRequests] = useState(true);
 
@@ -63,9 +63,9 @@ export default function DashboardPage() {
       } else {
         setCurrentUser(null);
         setCompanyId(null);
-        setStats({ activeRequests: 0, assignedRequests: 0, techniciansAvailable: 0 }); // Modificato
+        setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 }); // Modificato
         setRecentRequests([]);
-        setLoadingStats({ activeRequests: false, assignedRequests: false, techniciansAvailable: false }); // Modificato
+        setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false }); // Modificato
         setLoadingRequests(false);
       }
     });
@@ -74,9 +74,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!companyId) {
-      setLoadingStats({ activeRequests: false, assignedRequests: false, techniciansAvailable: false }); // Modificato
+      setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false }); // Modificato
       setLoadingRequests(false);
-      setStats({ activeRequests: 0, assignedRequests: 0, techniciansAvailable: 0 }); // Modificato
+      setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 }); // Modificato
       setRecentRequests([]);
       return;
     }
@@ -100,40 +100,40 @@ export default function DashboardPage() {
         setLoadingStats(prev => ({ ...prev, activeRequests: false }));
       }
 
-      // Fetch Assigned Requests (ex-Pending Appointments)
-      setLoadingStats(prev => ({ ...prev, assignedRequests: true })); // Modificato
+      // Fetch Assigned Requests
+      setLoadingStats(prev => ({ ...prev, assignedRequests: true })); 
       try {
-        const assignedRequestsQuery = query( // Modificato
-          collection(db, "richieste_clienti"), // Modificato: target richieste_clienti
+        const assignedRequestsQuery = query( 
+          collection(db, "richieste_clienti"), 
           where("id_azienda", "==", companyId),
-          where("stato", "==", "assegnata") // Modificato: filtra per stato "assegnata"
+          where("stato", "==", "assegnata") 
         );
-        const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery); // Modificato
-        setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count })); // Modificato
+        const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery); 
+        setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count })); 
       } catch (error) {
-        console.error("Error fetching assigned requests stats:", error); // Modificato
-        toast({ title: "Errore Richieste Assegnate", description: "Impossibile caricare il conteggio delle richieste assegnate.", variant: "destructive" }); // Modificato
-        setStats(prev => ({ ...prev, assignedRequests: 0 })); // Modificato
+        console.error("Error fetching assigned requests stats:", error); 
+        toast({ title: "Errore Richieste Assegnate", description: "Impossibile caricare il conteggio delle richieste assegnate.", variant: "destructive" }); 
+        setStats(prev => ({ ...prev, assignedRequests: 0 })); 
       } finally {
-        setLoadingStats(prev => ({ ...prev, assignedRequests: false })); // Modificato
+        setLoadingStats(prev => ({ ...prev, assignedRequests: false })); 
       }
       
-      // Fetch Technicians Available
-      setLoadingStats(prev => ({ ...prev, techniciansAvailable: true }));
+      // Fetch In Progress Requests (ex-Technicians Available)
+      setLoadingStats(prev => ({ ...prev, inProgressRequests: true })); // Modificato
       try {
-        const techniciansQuery = query(
-          collection(db, "tecnici"),
-          where("id_azienda", "==", companyId)
-          // Potresti aggiungere un filtro per `stato == "Disponibile"` se hai un campo del genere per i tecnici
+        const inProgressRequestsQuery = query( // Modificato
+          collection(db, "richieste_clienti"), // Modificato: target richieste_clienti
+          where("id_azienda", "==", companyId),
+          where("stato", "==", "in corso") // Modificato: filtra per stato "in corso"
         );
-        const techniciansSnap = await getCountFromServer(techniciansQuery);
-        setStats(prev => ({ ...prev, techniciansAvailable: techniciansSnap.data().count }));
+        const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery); // Modificato
+        setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count })); // Modificato
       } catch (error) {
-        console.error("Error fetching technicians stats:", error);
-        toast({ title: "Errore Tecnici Disponibili", description: "Impossibile caricare il conteggio dei tecnici.", variant: "destructive" });
-        setStats(prev => ({ ...prev, techniciansAvailable: 0 }));
+        console.error("Error fetching in-progress requests stats:", error); // Modificato
+        toast({ title: "Errore Richieste In Corso", description: "Impossibile caricare il conteggio delle richieste in corso.", variant: "destructive" }); // Modificato
+        setStats(prev => ({ ...prev, inProgressRequests: 0 })); // Modificato
       } finally {
-        setLoadingStats(prev => ({ ...prev, techniciansAvailable: false }));
+        setLoadingStats(prev => ({ ...prev, inProgressRequests: false })); // Modificato
       }
 
       // Fetch Recent Requests (Table)
@@ -192,7 +192,7 @@ export default function DashboardPage() {
       
       // Refetch stats that might be affected by status change
       if (companyId) {
-        setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true })); // Modificato
+        setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true })); // Modificato
         try {
             const activeRequestsQuery = query(
             collection(db, "richieste_clienti"),
@@ -202,7 +202,7 @@ export default function DashboardPage() {
             const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
             setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
 
-            const assignedRequestsQuery = query( // Aggiunto ricalcolo per assignedRequests
+            const assignedRequestsQuery = query( 
                 collection(db, "richieste_clienti"),
                 where("id_azienda", "==", companyId),
                 where("stato", "==", "assegnata")
@@ -210,11 +210,19 @@ export default function DashboardPage() {
             const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
             setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
 
+            const inProgressRequestsQuery = query( // Aggiunto ricalcolo per inProgressRequests
+                collection(db, "richieste_clienti"),
+                where("id_azienda", "==", companyId),
+                where("stato", "==", "in corso")
+            );
+            const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
+            setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
+
         } catch (error) {
             console.error("Error refetching stats after update:", error);
-            setStats(prev => ({ ...prev, activeRequests: 0, assignedRequests: 0 })); // Modificato
+            setStats(prev => ({ ...prev, activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 })); // Modificato
         } finally {
-            setLoadingStats(prev => ({ ...prev, activeRequests: false, assignedRequests: false })); // Modificato
+            setLoadingStats(prev => ({ ...prev, activeRequests: false, assignedRequests: false, inProgressRequests: false })); // Modificato
         }
       }
 
@@ -258,29 +266,29 @@ export default function DashboardPage() {
         <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Richieste Assegnate</CardTitle> 
-            <ClipboardCheck className="h-5 w-5 text-primary" /> {/* Modificata icona */}
+            <ClipboardCheck className="h-5 w-5 text-primary" /> 
           </CardHeader>
           <CardContent>
-            {loadingStats.assignedRequests ? ( /* Modificato */
+            {loadingStats.assignedRequests ? ( 
               <Skeleton className="h-7 w-1/4" />
             ) : (
-              <div className="text-2xl font-bold">{stats.assignedRequests ?? 0}</div> /* Modificato */
+              <div className="text-2xl font-bold">{stats.assignedRequests ?? 0}</div> 
             )}
-            <p className="text-xs text-muted-foreground">Richieste con tecnico assegnato</p> {/* Modificato testo */}
+            <p className="text-xs text-muted-foreground">Richieste con tecnico assegnato</p> 
           </CardContent>
         </Card>
-        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
+        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300"> {/* Terza Card Modificata */}
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tecnici Registrati</CardTitle>
-            <Users className="h-5 w-5 text-primary" />
+            <CardTitle className="text-sm font-medium">Richieste In Corso</CardTitle> {/* Modificato Titolo */}
+            <Activity className="h-5 w-5 text-primary" /> {/* Modificata Icona */}
           </CardHeader>
           <CardContent>
-            {loadingStats.techniciansAvailable ? (
+            {loadingStats.inProgressRequests ? ( /* Modificato */
               <Skeleton className="h-7 w-1/4" />
             ) : (
-              <div className="text-2xl font-bold">{stats.techniciansAvailable ?? 0}</div>
+              <div className="text-2xl font-bold">{stats.inProgressRequests ?? 0}</div> /* Modificato */
             )}
-            <p className="text-xs text-muted-foreground">Tecnici associati all'azienda</p>
+            <p className="text-xs text-muted-foreground">Richieste attualmente in lavorazione</p> {/* Modificato testo */}
           </CardContent>
         </Card>
       </div>
@@ -360,7 +368,7 @@ export default function DashboardPage() {
             <CardTitle>Prossimi Appuntamenti</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-            <ClipboardCheck className="h-12 w-12 mb-2" /> {/* Modificata icona per coerenza */}
+            <ClipboardCheck className="h-12 w-12 mb-2" /> 
             <p>Nessun appuntamento imminente.</p>
             <Button variant="link" asChild className="mt-2 text-accent"><Link href="/dashboard/appointments">Vedi tutti</Link></Button>
           </CardContent>
