@@ -189,24 +189,32 @@ export default function SettingsPage() {
     try {
       const querySnapshot = await getDocs(q);
       if (querySnapshot.empty) {
-        // Admin collaborator does not exist, create it
         const adminCollaboratorData = {
           id_azienda: adminCompanyId,
           nome_completo: adminName,
           email: adminEmail,
-          ruolo: "Amministratore",
+          ruolo: "Amministratore", // Ruolo di default per l'admin
           data_creazione: serverTimestamp(),
         };
         await addDoc(collaboratorsRef, adminCollaboratorData);
         console.log("Collaboratore amministratore creato:", adminEmail);
-        fetchCollaborators(adminCompanyId); // Refresh list
+        if (companyId) fetchCollaborators(companyId);
       } else {
-        // Check if displayName needs update
         const adminCollabDoc = querySnapshot.docs[0];
+        let needsUpdate = false;
+        const updates: Partial<Collaborator> = {};
         if (adminCollabDoc.data().nome_completo !== adminName) {
-          await updateDoc(adminCollabDoc.ref, { nome_completo: adminName });
-          console.log("Nome collaboratore amministratore aggiornato.");
-          fetchCollaborators(adminCompanyId); // Refresh list
+          updates.nome_completo = adminName;
+          needsUpdate = true;
+        }
+        if (adminCollabDoc.data().ruolo !== "Amministratore") { // Assicura che il ruolo sia Amministratore
+          updates.ruolo = "Amministratore";
+          needsUpdate = true;
+        }
+        if (needsUpdate) {
+          await updateDoc(adminCollabDoc.ref, updates);
+          console.log("Dettagli collaboratore amministratore aggiornati.");
+          if (companyId) fetchCollaborators(companyId);
         }
       }
     } catch (error) {
@@ -245,7 +253,7 @@ export default function SettingsPage() {
             companyForm.reset(loadedCompanyData);
             if (data.slug) setIsSlugManuallyEditedCompany(true);
             
-            await ensureAdminCollaboratorExists(user); // Ensure admin is in collaborators list
+            await ensureAdminCollaboratorExists(user);
             fetchCollaborators(user.uid); 
           } else {
              companyForm.reset({
@@ -254,6 +262,9 @@ export default function SettingsPage() {
                 email_contatto: user.email || "",
                 slug: generateSlug(user.displayName || "mia-azienda"),
              });
+             // Anche se l'azienda non esiste in Firestore, assicuriamoci che l'admin sia creato come collaboratore
+             // quando l'azienda verrà salvata per la prima volta.
+             // ensureAdminCollaboratorExists(user); // Potrebbe essere chiamato dopo il primo salvataggio dell'azienda
           }
         } catch (error) {
           console.error("Errore nel caricare i dati dell'azienda:", error);
@@ -266,7 +277,7 @@ export default function SettingsPage() {
       setLoadingData(false);
     });
     return () => unsubscribe();
-  }, [companyForm, profileForm, toast, fetchCollaborators]); // Added fetchCollaborators to dependency array
+  }, [companyForm, profileForm, toast, fetchCollaborators, companyId]); 
 
   const companyNameValue = companyForm.watch("nome");
   const companySlugValue = companyForm.watch("slug");
@@ -292,6 +303,7 @@ export default function SettingsPage() {
       const companyDocRef = doc(db, "aziende", currentUser.uid);
       const currentCompanyDataSnap = await getDoc(companyDocRef);
       const currentSlug = currentCompanyDataSnap.exists() ? currentCompanyDataSnap.data().slug : null;
+      const isNewCompany = !currentCompanyDataSnap.exists();
 
       let finalSlug = data.slug;
       if (data.slug.trim() === "") {
@@ -328,12 +340,16 @@ export default function SettingsPage() {
         indirizzo_completo: validatedData.indirizzo_completo || null,
         slug: validatedData.slug,
         logoUrl: validatedData.logoUrl || null,
-        email_admin: currentUser.email, // Mantieni email_admin originale
+        email_admin: currentUser.email, 
         uid_admin: currentUser.uid,
       };
 
       await setDoc(companyDocRef, dataToUpdate, { merge: true });
       
+      if (isNewCompany) { // Se era una nuova azienda, assicurati che l'admin sia aggiunto ai collaboratori
+        await ensureAdminCollaboratorExists(currentUser);
+      }
+
       setCompanyData(prev => ({...prev, ...dataToUpdate}));
       companyForm.reset(dataToUpdate); 
       setIsSlugManuallyEditedCompany(true); 
@@ -354,11 +370,24 @@ export default function SettingsPage() {
   }
 
   async function onSubmitProfile(data: ProfileFormValues) {
-    if (!currentUser) {
-      toast({ title: "Errore", description: "Utente non autenticato.", variant: "destructive" });
+    if (!currentUser || !companyId) {
+      toast({ title: "Errore", description: "Utente non autenticato o ID azienda mancante.", variant: "destructive" });
       return;
     }
     setIsSavingProfile(true);
+
+    // Controllo esplicito del ruolo
+    const selfAsCollaborator = collaborators.find(c => c.email === currentUser.email && c.id_azienda === companyId);
+    if (!selfAsCollaborator || selfAsCollaborator.ruolo !== "Amministratore") {
+        toast({
+            title: "Azione Non Permessa",
+            description: "Solo un utente con il ruolo 'Amministratore' può modificare questi dettagli del profilo.",
+            variant: "destructive"
+        });
+        setIsSavingProfile(false);
+        return;
+    }
+
     let profileUpdated = false;
     let emailUpdatedInAuth = false;
 
@@ -366,7 +395,7 @@ export default function SettingsPage() {
       // Update Display Name
       if (data.displayName !== currentUser.displayName) {
         await updateProfile(currentUser, { displayName: data.displayName });
-        setCurrentUser(prevUser => prevUser ? { ...prevUser, displayName: data.displayName } : null);
+        // Non è necessario aggiornare currentUser qui perché onAuthStateChanged lo farà.
         profileUpdated = true;
       }
 
@@ -374,27 +403,19 @@ export default function SettingsPage() {
       if (data.email !== currentUser.email) {
         try {
           await updateEmail(currentUser, data.email);
-          // Firebase Auth will update currentUser.email automatically after this.
-          // We also need to update it in our local currentUser state if we use it for display before a re-fetch.
-          setCurrentUser(prevUser => prevUser ? { ...prevUser, email: data.email } : null);
-          
-          // Update email_admin in 'aziende' collection
+          // Non è necessario aggiornare currentUser qui.
           const companyDocRef = doc(db, "aziende", currentUser.uid);
           await updateDoc(companyDocRef, { email_admin: data.email });
-          
           profileUpdated = true;
           emailUpdatedInAuth = true;
         } catch (emailError: any) {
           console.error("Errore aggiornamento email Firebase Auth:", emailError);
-          if (emailError.code === 'auth/requires-recent-login') {
-            toast({ title: "Azione Richiesta", description: "Per modificare l'email, è necessario un login recente. Prova a fare logout e login.", variant: "destructive" });
-          } else if (emailError.code === 'auth/email-already-in-use') {
-            toast({ title: "Errore Email", description: "L'indirizzo email è già in uso da un altro account.", variant: "destructive" });
-          } else {
-            toast({ title: "Errore Email", description: `Impossibile aggiornare l'email: ${emailError.message}`, variant: "destructive" });
-          }
+          let desc = `Impossibile aggiornare l'email: ${emailError.message}`;
+          if (emailError.code === 'auth/requires-recent-login') desc = "Per modificare l'email, è necessario un login recente. Prova a fare logout e login.";
+          else if (emailError.code === 'auth/email-already-in-use') desc = "L'indirizzo email è già in uso da un altro account.";
+          toast({ title: "Errore Email", description: desc, variant: "destructive" });
           setIsSavingProfile(false);
-          return; // Stop further processing if email update fails critically
+          return; 
         }
       }
 
@@ -411,34 +432,33 @@ export default function SettingsPage() {
         try {
           await updatePassword(currentUser, data.newPassword);
           profileUpdated = true;
-          profileForm.reset({ ...data, newPassword: "", confirmNewPassword: "" }); // Clear password fields
+          profileForm.reset({ ...data, newPassword: "", confirmNewPassword: "" });
         } catch (passwordError: any) {
           console.error("Errore aggiornamento password Firebase Auth:", passwordError);
-           if (passwordError.code === 'auth/requires-recent-login') {
-            toast({ title: "Azione Richiesta", description: "Per modificare la password, è necessario un login recente. Prova a fare logout e login.", variant: "destructive" });
-          } else if (passwordError.code === 'auth/weak-password') {
-            toast({ title: "Errore Password", description: "La password è troppo debole.", variant: "destructive" });
-          } else {
-            toast({ title: "Errore Password", description: `Impossibile aggiornare la password: ${passwordError.message}`, variant: "destructive" });
-          }
+          let desc = `Impossibile aggiornare la password: ${passwordError.message}`;
+          if (passwordError.code === 'auth/requires-recent-login') desc = "Per modificare la password, è necessario un login recente. Prova a fare logout e login.";
+          else if (passwordError.code === 'auth/weak-password') desc = "La password è troppo debole.";
+          toast({ title: "Errore Password", description: desc, variant: "destructive" });
           setIsSavingProfile(false);
-          return; // Stop further processing
+          return;
         }
       }
 
-      // Sync admin details with collaborators_azienda
+      // Sincronizza i dettagli dell'amministratore con collaboratori_azienda
       const adminCollaboratorsRef = collection(db, "collaboratori_azienda");
-      const q = query(adminCollaboratorsRef, where("id_azienda", "==", currentUser.uid), where("email", "==", (emailUpdatedInAuth ? data.email : currentUser.email)));
+      const adminEmailForQuery = emailUpdatedInAuth ? data.email : (currentUser.email || "");
+      const q = query(adminCollaboratorsRef, where("id_azienda", "==", currentUser.uid), where("email", "==", adminEmailForQuery));
       const adminCollabSnapshot = await getDocs(q);
 
       if (!adminCollabSnapshot.empty) {
         const adminCollabDocRef = adminCollabSnapshot.docs[0].ref;
         await updateDoc(adminCollabDocRef, { 
           nome_completo: data.displayName,
-          email: data.email // update email here as well if it changed
+          email: data.email, // Assicura che l'email sia aggiornata anche qui
+          ruolo: "Amministratore" // Riafferma il ruolo
         });
       } else {
-        // This case should ideally be handled by ensureAdminCollaboratorExists, but as a fallback:
+        // Se non esiste (improbabile dopo ensureAdminCollaboratorExists), crealo
         await addDoc(adminCollaboratorsRef, {
           id_azienda: currentUser.uid,
           nome_completo: data.displayName,
@@ -447,6 +467,7 @@ export default function SettingsPage() {
           data_creazione: serverTimestamp(),
         });
       }
+      // Ricarica la lista dei collaboratori per riflettere le modifiche
       if (companyId) fetchCollaborators(companyId);
 
 
@@ -455,6 +476,7 @@ export default function SettingsPage() {
       } else {
         toast({ title: "Info", description: "Nessuna modifica rilevata nel profilo." });
       }
+      // profileForm.reset(data); // Resetta il form con i nuovi dati (eccetto password)
 
     } catch (error: any) {
       console.error("Errore aggiornamento profilo:", error);
@@ -505,23 +527,35 @@ export default function SettingsPage() {
   const handleUpdateCollaborator = async (collaboratorId: string, data: CollaboratorEditFormValues) => {
     if (!companyId) return;
     try {
+      // Controllo per impedire la modifica dell'email dell'admin principale se è diversa da quella corrente
+      if (collaboratorId === collaborators.find(c => c.email === currentUser?.email && c.ruolo === "Amministratore")?.id && data.email !== currentUser?.email) {
+          const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", companyId), where("email", "==", data.email));
+          const emailCheckSnapshot = await getDocs(q);
+          if (!emailCheckSnapshot.empty && emailCheckSnapshot.docs.some(d => d.id !== collaboratorId)) {
+            toast({ title: "Errore", description: "Questa email è già in uso.", variant: "destructive" });
+            throw new Error("Email già in uso");
+          }
+      }
+
       const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
       await updateDoc(collaboratorDocRef, data); 
       toast({ title: "Successo!", description: "Collaboratore aggiornato."});
       fetchCollaborators(companyId);
     } catch (error: any) {
       console.error("Errore aggiornamento collaboratore:", error);
-      toast({ title: "Errore Aggiornamento", description: error.message || "Impossibile aggiornare il collaboratore.", variant: "destructive" });
+      if (error.message !== "Email già in uso") {
+        toast({ title: "Errore Aggiornamento", description: error.message || "Impossibile aggiornare il collaboratore.", variant: "destructive" });
+      }
       throw error; 
     }
   };
   
   const handleDeleteCollaborator = async (collaboratorId: string) => {
-    if (!companyId) return;
-    // Prevent deleting the admin's own collaborator entry
-    const adminCollaborator = collaborators.find(c => c.email === currentUser?.email && c.ruolo === "Amministratore");
-    if (adminCollaborator && adminCollaborator.id === collaboratorId) {
-      toast({ title: "Azione non permessa", description: "L'amministratore principale non può essere eliminato da questa lista.", variant: "destructive"});
+    if (!companyId || !currentUser) return;
+    
+    const collaboratorToDelete = collaborators.find(c => c.id === collaboratorId);
+    if (collaboratorToDelete?.email === currentUser.email && collaboratorToDelete?.ruolo === "Amministratore") {
+      toast({ title: "Azione non permessa", description: "L'amministratore principale non può essere eliminato.", variant: "destructive"});
       return;
     }
 
@@ -580,11 +614,12 @@ export default function SettingsPage() {
                       />
                       <AvatarFallback>{(companyForm.getValues("nome") || "L").substring(0,1).toUpperCase()}</AvatarFallback>
                     </Avatar>
-                    <Button 
+                     <Button 
                         variant="outline" 
                         type="button" 
-                        disabled 
+                        disabled
                         onClick={() => {
+                          // La logica di caricamento è stata rimossa per ora
                           toast({title: "Info", description: "Funzionalità di caricamento logo (Prossimamente)."})
                         }}
                     >
@@ -973,5 +1008,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-    
