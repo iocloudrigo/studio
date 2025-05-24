@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Contact, PlusCircle, Search, Edit, Trash2, Loader2 } from "lucide-react";
+import { Contact, PlusCircle, Search, Edit, Trash2, Loader2, Check } from "lucide-react"; // Aggiunta Check
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
@@ -119,7 +119,7 @@ export default function ClientsPage() {
         note_interne: data.note_interne || null,
       });
       toast({ title: "Successo!", description: "Cliente aggiornato con successo." });
-      fetchClients(companyId); // Re-fetch clients to update the list
+      if (companyId) fetchClients(companyId); // Re-fetch clients to update the list
     } catch (error) {
       console.error("Error updating client:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare il cliente.", variant: "destructive" });
@@ -133,7 +133,7 @@ export default function ClientsPage() {
       const clientDocRef = doc(db, "clienti", clientId);
       await deleteDoc(clientDocRef);
       toast({ title: "Successo!", description: "Cliente eliminato con successo." });
-      fetchClients(companyId); // Re-fetch clients
+      if (companyId) fetchClients(companyId); // Re-fetch clients
     } catch (error) {
       console.error("Error deleting client:", error);
       toast({ title: "Errore Eliminazione", description: "Impossibile eliminare il cliente.", variant: "destructive" });
@@ -184,6 +184,7 @@ export default function ClientsPage() {
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Nome Completo</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Email</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Telefono</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Note Interne</th>
                       <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
                     </tr>
                   </thead>
@@ -193,6 +194,13 @@ export default function ClientsPage() {
                         <td className="p-3 text-sm font-medium text-primary whitespace-nowrap">{client.nome_completo}</td>
                         <td className="p-3 text-sm whitespace-nowrap">{client.email || "N/D"}</td>
                         <td className="p-3 text-sm whitespace-nowrap">{client.telefono || "N/D"}</td>
+                        <td className="p-3 text-sm whitespace-nowrap text-center">
+                          {client.note_interne && client.note_interne.trim() !== "" ? (
+                            <Check className="h-5 w-5 text-green-500 mx-auto" />
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </td>
                         <td className="p-3 text-right text-sm whitespace-nowrap">
                           <Button variant="outline" size="sm" onClick={() => handleOpenDetailsSheet(client)}>
                             <Edit className="mr-1 h-3 w-3"/> Dettagli
@@ -226,3 +234,4 @@ export default function ClientsPage() {
     </div>
   );
 }
+
