@@ -13,7 +13,7 @@ export function AuthLayout({ children }: PropsWithChildren) {
           <Logo />
         </Link>
       </div>
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-3xl"> {/* Modificato da max-w-md a max-w-3xl */}
         {children}
       </div>
     </div>
