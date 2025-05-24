@@ -61,12 +61,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
-import type { Collaborator } from "@/app/dashboard/settings/page";
+import type { Collaborator } from "@/app/dashboard/settings/page"; // Assumendo che il tipo sia esportato
+import { useActiveCollaborator } from '@/app/dashboard/layout'; // Importa il custom hook
 
-interface ActiveCollaborator {
+interface ActiveCollaboratorStorageData { // Rinomina l'interfaccia locale per evitare conflitti se ce ne sono
   id: string;
   nome_completo: string;
-  ruolo: string; // Aggiunto ruolo
+  ruolo: string;
 }
 
 const navItems = [
@@ -86,7 +87,6 @@ const navItems = [
   { href: "/dashboard/settings", label: "Impostazioni", icon: Settings },
 ];
 
-const LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY = "activeIncastroCollaborator";
 
 export function AppSidebar() {
   const currentPathname = usePathname();
@@ -98,11 +98,12 @@ export function AppSidebar() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  const [activeCollaborator, setActiveCollaborator] = useState<ActiveCollaborator | null>(null);
-  const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(true);
+  // Utilizza il context per activeCollaborator
+  const { activeCollaborator, setActiveCollaborator, isLoadingActiveCollaborator } = useActiveCollaborator(); 
+  const [isLoadingCollaboratorsState, setIsLoadingCollaboratorsState] = useState(true); // Stato di caricamento specifico per la lista
 
   const [isPasswordPromptOpen, setIsPasswordPromptOpen] = useState(false);
-  const [targetAdminCollaboratorToSwitch, setTargetAdminCollaboratorToSwitch] = useState<ActiveCollaborator | null>(null);
+  const [targetAdminCollaboratorToSwitch, setTargetAdminCollaboratorToSwitch] = useState<ActiveCollaboratorStorageData | null>(null);
   const [passwordForReauth, setPasswordForReauth] = useState("");
   const [isReauthenticating, setIsReauthenticating] = useState(false);
 
@@ -116,83 +117,74 @@ export function AppSidebar() {
         setCurrentUser(null);
         setCompanyId(null);
         setCollaborators([]);
-        setActiveCollaborator(null);
-        localStorage.removeItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
+        setActiveCollaborator(null); // Resetta anche il context
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [setActiveCollaborator]); // Aggiungi setActiveCollaborator alle dipendenze
 
-  const setDefaultActiveCollaborator = useCallback((collaboratorList: Collaborator[], user: FirebaseUser | null) => {
+  const setDefaultActiveCollaboratorInContext = useCallback((collaboratorList: Collaborator[], user: FirebaseUser | null) => {
     if (user && collaboratorList.length > 0) {
       const adminCollaborator = collaboratorList.find(c => c.email === user.email && c.ruolo === "Amministratore");
+      let defaultActive: ActiveCollaboratorStorageData | null = null;
       if (adminCollaborator) {
-        const defaultActive: ActiveCollaborator = { 
+        defaultActive = { 
           id: adminCollaborator.id, 
           nome_completo: adminCollaborator.nome_completo,
-          ruolo: adminCollaborator.ruolo // Salva anche il ruolo
+          ruolo: adminCollaborator.ruolo
         };
-        setActiveCollaborator(defaultActive);
-        localStorage.setItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY, JSON.stringify(defaultActive));
       } else if (collaboratorList.length > 0) {
         const firstCollaborator = collaboratorList[0];
-        const fallbackActive: ActiveCollaborator = { 
+        defaultActive = { 
             id: firstCollaborator.id, 
             nome_completo: firstCollaborator.nome_completo,
-            ruolo: firstCollaborator.ruolo // Salva anche il ruolo
+            ruolo: firstCollaborator.ruolo
         };
-        setActiveCollaborator(fallbackActive);
-        localStorage.setItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY, JSON.stringify(fallbackActive));
       }
+      setActiveCollaborator(defaultActive); // Imposta tramite context
     } else {
-      setActiveCollaborator(null);
-      localStorage.removeItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
+      setActiveCollaborator(null); // Imposta tramite context
     }
-  }, []);
+  }, [setActiveCollaborator]);
 
 
   const fetchCollaborators = useCallback(async (currentCompanyId: string) => {
-    if (!currentCompanyId) return;
-    setIsLoadingCollaborators(true);
+    if (!currentCompanyId) {
+        setIsLoadingCollaboratorsState(false);
+        return;
+    }
+    setIsLoadingCollaboratorsState(true);
     try {
       const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", currentCompanyId), orderBy("data_creazione", "desc"));
       const querySnapshot = await getDocs(q);
       const fetchedCollaborators = querySnapshot.docs.map(docSnap => ({
         id: docSnap.id,
         ...docSnap.data()
-      } as Collaborator)); // Collaborator ha già il ruolo
+      } as Collaborator));
       setCollaborators(fetchedCollaborators);
 
-      const storedActiveCollaborator = localStorage.getItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
-      if (storedActiveCollaborator) {
-        try {
-          const parsedCollaborator: ActiveCollaborator = JSON.parse(storedActiveCollaborator);
-          if (fetchedCollaborators.some(c => c.id === parsedCollaborator.id)) {
-            // Assicurati che il ruolo sia aggiornato da localStorage se è cambiato in DB
-            const matchingDbCollaborator = fetchedCollaborators.find(c => c.id === parsedCollaborator.id);
-            if(matchingDbCollaborator && parsedCollaborator.ruolo !== matchingDbCollaborator.ruolo){
-              parsedCollaborator.ruolo = matchingDbCollaborator.ruolo;
-              localStorage.setItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY, JSON.stringify(parsedCollaborator));
-            }
-            setActiveCollaborator(parsedCollaborator);
-          } else {
-            setDefaultActiveCollaborator(fetchedCollaborators, auth.currentUser);
-          }
-        } catch (e) {
-          console.error("Error parsing active collaborator from localStorage", e);
-          setDefaultActiveCollaborator(fetchedCollaborators, auth.currentUser);
+      // Se non c'è un activeCollaborator nel context (o se quello nel context non è valido), imposta il default.
+      // isLoadingActiveCollaborator dal context ci dice se il valore iniziale da localStorage è stato caricato.
+      if (!isLoadingActiveCollaborator) {
+        const currentActive = activeCollaborator; // Leggi dal context
+        if (!currentActive || !fetchedCollaborators.some(c => c.id === currentActive.id)) {
+          setDefaultActiveCollaboratorInContext(fetchedCollaborators, auth.currentUser);
+        } else {
+           // Assicurati che il ruolo sia aggiornato se è cambiato nel DB
+           const matchingDbCollaborator = fetchedCollaborators.find(c => c.id === currentActive.id);
+           if(matchingDbCollaborator && currentActive.ruolo !== matchingDbCollaborator.ruolo){
+             setActiveCollaborator({...currentActive, ruolo: matchingDbCollaborator.ruolo });
+           }
         }
-      } else {
-        setDefaultActiveCollaborator(fetchedCollaborators, auth.currentUser);
       }
 
     } catch (error) {
       console.error("Errore nel caricare i collaboratori:", error);
       toast({ title: "Errore Caricamento Collaboratori", description: "Impossibile caricare l'elenco dei collaboratori per il selettore.", variant: "destructive" });
     } finally {
-      setIsLoadingCollaborators(false);
+      setIsLoadingCollaboratorsState(false);
     }
-  }, [toast, setDefaultActiveCollaborator]);
+  }, [toast, setDefaultActiveCollaboratorInContext, isLoadingActiveCollaborator, activeCollaborator, setActiveCollaborator]);
 
   useEffect(() => {
     if (companyId) {
@@ -220,7 +212,7 @@ export function AppSidebar() {
         title: "Logout Effettuato",
         description: "Sei stato disconnesso con successo.",
       });
-      localStorage.removeItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
+      setActiveCollaborator(null); // Resetta activeCollaborator nel context
       router.push("/");
     } catch (error) {
       console.error("Errore durante il logout:", error);
@@ -235,22 +227,20 @@ export function AppSidebar() {
   const handleActiveCollaboratorChange = (collaboratorId: string) => {
     const selected = collaborators.find(c => c.id === collaboratorId);
     if (selected) {
-      const newActiveTarget: ActiveCollaborator = { 
+      const newActiveTarget: ActiveCollaboratorStorageData = { 
         id: selected.id, 
         nome_completo: selected.nome_completo,
         ruolo: selected.ruolo
       };
+      
+      const currentActiveContextCollaborator = activeCollaborator; // Leggi dal context
 
-      // Se si sta cercando di switchare a un "Amministratore"
-      // e l'utente attivo corrente non è già *quello stesso* amministratore
       if (newActiveTarget.ruolo === "Amministratore" && 
-          !(activeCollaborator?.ruolo === "Amministratore" && activeCollaborator?.id === newActiveTarget.id)) {
+          !(currentActiveContextCollaborator?.ruolo === "Amministratore" && currentActiveContextCollaborator?.id === newActiveTarget.id)) {
         setTargetAdminCollaboratorToSwitch(newActiveTarget);
         setIsPasswordPromptOpen(true);
       } else {
-        // Altrimenti, esegui lo switch normalmente
-        setActiveCollaborator(newActiveTarget);
-        localStorage.setItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY, JSON.stringify(newActiveTarget));
+        setActiveCollaborator(newActiveTarget); // Imposta tramite context
         toast({ title: "Utente Attivo Cambiato", description: `Ora stai operando come ${newActiveTarget.nome_completo}.` });
       }
     }
@@ -268,8 +258,7 @@ export function AppSidebar() {
       const credential = EmailAuthProvider.credential(currentUser.email, passwordForReauth);
       await reauthenticateWithCredential(currentUser, credential);
       
-      setActiveCollaborator(targetAdminCollaboratorToSwitch);
-      localStorage.setItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY, JSON.stringify(targetAdminCollaboratorToSwitch));
+      setActiveCollaborator(targetAdminCollaboratorToSwitch); // Imposta tramite context
       toast({ title: "Successo!", description: `Ora stai operando come Amministratore: ${targetAdminCollaboratorToSwitch.nome_completo}.` });
       
       setIsPasswordPromptOpen(false);
@@ -287,6 +276,7 @@ export function AppSidebar() {
     }
   };
 
+  const fullCurrentUrl = currentPathname + (typeof window !== "undefined" ? window.location.search : "");
 
   return (
     <>
@@ -313,10 +303,7 @@ export function AppSidebar() {
                       className={cn(
                         "flex w-full items-center justify-between gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                         sidebarState === "collapsed" && "!size-8 !p-2",
-                        item.subItems.some(sub => {
-                          const currentFullUrl = currentPathname + (typeof window !== "undefined" ? window.location.search : "");
-                          return currentFullUrl === sub.href || (currentPathname === '/dashboard/requests' && sub.href.startsWith('/dashboard/requests?statusFilter=') && currentFullUrl === sub.href);
-                        }) && "bg-sidebar-accent text-sidebar-accent-foreground"
+                        item.subItems.some(sub => fullCurrentUrl === sub.href) && "bg-sidebar-accent text-sidebar-accent-foreground"
                       )}
                       onClick={() => toggleSubmenu(item.label)}
                       title={item.label}
@@ -331,9 +318,7 @@ export function AppSidebar() {
                     {openSubmenus[item.label] && sidebarState === "expanded" && (
                       <SidebarMenuSub>
                         {item.subItems.map((subItem) => {
-                          const currentFullUrl = currentPathname + (typeof window !== "undefined" ? window.location.search : "");
-                          const isActive = currentFullUrl === subItem.href;
-                          
+                          const isActive = fullCurrentUrl === subItem.href;
                           return (
                             <SidebarMenuSubItem key={subItem.href}>
                               <Link href={subItem.href} legacyBehavior passHref>
@@ -354,7 +339,7 @@ export function AppSidebar() {
                 ) : (
                   <Link href={item.href} legacyBehavior passHref>
                     <SidebarMenuButton
-                      isActive={currentPathname === item.href}
+                      isActive={currentPathname === item.href && !item.href.includes("?")} // Evita attivazione se ci sono query params e non è una subitem
                       tooltip={sidebarState === "collapsed" ? item.label : undefined}
                     >
                       <item.icon />
@@ -381,7 +366,7 @@ export function AppSidebar() {
                     <UserIcon />
                     {sidebarState === "expanded" && (
                       <span className="truncate">
-                        {isLoadingCollaborators ? "Caricamento..." : activeCollaborator?.nome_completo || "Seleziona Utente"}
+                        {isLoadingCollaboratorsState || isLoadingActiveCollaborator ? "Caricamento..." : activeCollaborator?.nome_completo || "Nessun utente attivo"}
                       </span>
                     )}
                     {sidebarState === "expanded" && <ChevronDown className="h-4 w-4 ml-auto opacity-50" />}
@@ -390,7 +375,7 @@ export function AppSidebar() {
                 <DropdownMenuContent className="w-56 ml-2 mb-1" side="top" align="start">
                   <DropdownMenuLabel>Opera come:</DropdownMenuLabel>
                   <DropdownMenuSeparatorItem />
-                  {isLoadingCollaborators ? (
+                  {isLoadingCollaboratorsState ? (
                     <DropdownMenuRadioItem value="loading" disabled>Caricamento utenti...</DropdownMenuRadioItem>
                   ) : collaborators.length > 0 ? (
                     <DropdownMenuRadioGroup value={activeCollaborator?.id || ""} onValueChange={handleActiveCollaboratorChange}>
@@ -423,7 +408,7 @@ export function AppSidebar() {
 
       {currentUser && (
         <AlertDialog open={isPasswordPromptOpen} onOpenChange={(open) => {
-          if (!open) { // Se l'utente chiude il dialogo (es. cliccando fuori o Esc)
+          if (!open) { 
             setPasswordForReauth("");
             setTargetAdminCollaboratorToSwitch(null);
           }
@@ -466,5 +451,3 @@ export function AppSidebar() {
     </>
   );
 }
-
-    

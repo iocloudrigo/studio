@@ -44,8 +44,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-
+// Rimosso import non più necessario: import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { useActiveCollaborator } from '@/app/dashboard/layout'; // Importa il custom hook
 
 const companyFormSchema = z.object({
   nome: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
@@ -97,14 +97,6 @@ export interface Collaborator {
   id_azienda: string; 
 }
 
-interface ActiveCollaboratorStorageData {
-  id: string;
-  nome_completo: string;
-  ruolo: string;
-}
-
-const LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY = "activeIncastroCollaborator";
-
 const generateSlug = (name: string): string => {
   if (!name) return "";
   return name
@@ -135,7 +127,9 @@ export default function SettingsPage() {
   const [selectedCollaboratorForSheet, setSelectedCollaboratorForSheet] = useState<Collaborator | null>(null);
   const [isCollaboratorSheetOpen, setIsCollaboratorSheetOpen] = useState(false);
 
-  const [activeCollaboratorRole, setActiveCollaboratorRole] = useState<string | null>(null);
+  // Utilizza il context per activeCollaborator
+  const { activeCollaborator, isLoadingActiveCollaborator } = useActiveCollaborator();
+  const activeCollaboratorRole = activeCollaborator?.ruolo || null;
   
   const companyForm = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
@@ -285,36 +279,8 @@ export default function SettingsPage() {
       setLoadingData(false);
     });
 
-    // Listener per il cambio di collaboratore attivo da localStorage (impostato da AppSidebar)
-    const handleStorageChange = () => {
-      const storedActiveCollaboratorString = localStorage.getItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
-      if (storedActiveCollaboratorString) {
-        try {
-          const activeCollabData: ActiveCollaboratorStorageData = JSON.parse(storedActiveCollaboratorString);
-          setActiveCollaboratorRole(activeCollabData.ruolo);
-        } catch (e) {
-          console.error("Error parsing active collaborator from localStorage on change:", e);
-          setActiveCollaboratorRole(null);
-        }
-      } else {
-        setActiveCollaboratorRole(null);
-      }
-    };
-
-    // Leggi il valore iniziale
-    handleStorageChange();
-
-    window.addEventListener('storage', handleStorageChange); // Ascolta i cambi cross-tab
-    // Potrebbe essere necessario un evento custom se AppSidebar non scatena 'storage' event
-    // Per ora, ci affidiamo al fatto che questa pagina si ricarichi/ri-renderizzi
-    // in modo da leggere localStorage in useEffect. Per un aggiornamento più reattivo
-    // se AppSidebar e SettingsPage sono montate contemporaneamente, servirebbe un context o pub/sub.
-
-    return () => {
-      unsubscribe();
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [companyForm, profileForm, toast, fetchCollaborators, companyId]); // Aggiunto companyId alle dipendenze
+    return () => unsubscribe();
+  }, [companyForm, profileForm, toast, fetchCollaborators, companyId]);
 
   const companyNameValue = companyForm.watch("nome");
   const companySlugValue = companyForm.watch("slug");
@@ -411,19 +377,8 @@ export default function SettingsPage() {
       toast({ title: "Errore", description: "Utente non autenticato o ID azienda mancante.", variant: "destructive" });
       return;
     }
-
-    const storedActiveCollaboratorString = localStorage.getItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
-    let currentActiveRole = null;
-    if (storedActiveCollaboratorString) {
-        try {
-            const activeCollabData: ActiveCollaboratorStorageData = JSON.parse(storedActiveCollaboratorString);
-            currentActiveRole = activeCollabData.ruolo;
-        } catch (e) {
-            console.error("Error parsing active collaborator for profile save:", e);
-        }
-    }
     
-    if (currentActiveRole !== "Amministratore") {
+    if (activeCollaboratorRole !== "Amministratore") {
       toast({
         title: "Azione Non Permessa",
         description: "Devi operare come 'Amministratore' per modificare i dettagli del profilo principale.",
@@ -595,7 +550,6 @@ export default function SettingsPage() {
       }
     }
 
-
     try {
       const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
       await updateDoc(collaboratorDocRef, data); 
@@ -633,8 +587,7 @@ export default function SettingsPage() {
 
   const canEditAdminProfile = activeCollaboratorRole === "Amministratore";
 
-
-  if (loadingData) {
+  if (loadingData || isLoadingActiveCollaborator) { // Considera anche isLoadingActiveCollaborator
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -1069,5 +1022,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-    

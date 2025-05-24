@@ -11,6 +11,7 @@ import { useState, useEffect, type FC } from "react";
 import { Timestamp, serverTimestamp } from "firebase/firestore";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
+import { useActiveCollaborator } from '@/app/dashboard/layout'; // Importa il custom hook
 
 // Interfaccia per i dati della richiesta nel pannello
 export interface RequestSheetData {
@@ -29,16 +30,6 @@ export interface RequestSheetData {
   completata_da_collaboratore_nome?: string;
   data_completamento?: Timestamp | Date;
 }
-
-// Interfaccia per i dati del collaboratore attivo da localStorage
-interface ActiveCollaborator {
-  id: string;
-  nome_completo: string;
-  ruolo: string; // Assicurati che il ruolo sia qui se necessario per logica interna,
-                 // altrimenti è sufficiente id e nome_completo per registrare chi ha completato.
-}
-const LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY = "activeIncastroCollaborator";
-
 
 interface RequestDetailsSheetProps {
   isOpen: boolean;
@@ -59,6 +50,7 @@ const statusOptions = [
 export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOpenChange, request, onUpdateRequestStatus }) => {
   const [selectedStatus, setSelectedStatus] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
+  const { activeCollaborator } = useActiveCollaborator(); // Usa il context
 
   useEffect(() => {
     if (request?.status) {
@@ -74,35 +66,28 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
     let additionalData: Record<string, any> = {};
 
     if (selectedStatus === "completata") {
-      const storedActiveCollaborator = localStorage.getItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
-      if (storedActiveCollaborator) {
-        try {
-          const activeCollaborator: ActiveCollaborator = JSON.parse(storedActiveCollaborator);
-          additionalData.completata_da_collaboratore_id = activeCollaborator.id;
-          additionalData.completata_da_collaboratore_nome = activeCollaborator.nome_completo;
-          additionalData.data_completamento = serverTimestamp();
-        } catch (e) {
-          console.error("Error parsing active collaborator from localStorage for completion:", e);
-        }
+      if (activeCollaborator) { // Leggi dal context
+        additionalData.completata_da_collaboratore_id = activeCollaborator.id;
+        additionalData.completata_da_collaboratore_nome = activeCollaborator.nome_completo;
+        additionalData.data_completamento = serverTimestamp();
       } else {
-        console.warn("Nessun collaboratore attivo trovato in localStorage per marcare la richiesta come completata.");
+        console.warn("Nessun collaboratore attivo trovato per marcare la richiesta come completata.");
+        // Potresti voler mostrare un toast all'utente qui o gestire diversamente
       }
     } else {
-        // Se lo stato precedente era "completata" e ora non lo è più,
-        // potremmo voler rimuovere i campi di completamento.
         if (request.status === "completata") {
-            additionalData.completata_da_collaboratore_id = null; // o deleteField() se vuoi rimuovere il campo
+            additionalData.completata_da_collaboratore_id = null; 
             additionalData.completata_da_collaboratore_nome = null;
             additionalData.data_completamento = null;
         }
     }
-
 
     try {
       await onUpdateRequestStatus(request.id, selectedStatus, additionalData);
       onOpenChange(false);
     } catch (error) {
       console.error("Error updating status from sheet:", error);
+      // Considera di mostrare un toast di errore qui
     } finally {
       setIsSaving(false);
     }
@@ -193,5 +178,3 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
     </Sheet>
   );
 }
-
-    
