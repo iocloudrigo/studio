@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { FileText, CalendarDays, PlusCircle, Lightbulb, User, Users } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
+import { Skeleton } from "@/components/ui/skeleton"; 
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -43,12 +43,10 @@ export default function DashboardPage() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
-        setCompanyId(user.uid); // Assuming user.uid is the companyId for filtering
+        setCompanyId(user.uid); 
       } else {
         setCurrentUser(null);
         setCompanyId(null);
-        // Optionally redirect to login if not authenticated
-        // router.push('/'); 
       }
     });
     return () => unsubscribe();
@@ -56,7 +54,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!companyId) {
-      setLoadingStats(false); // Stop loading if no companyId (e.g. logged out)
+      setLoadingStats(false); 
       setLoadingRequests(false);
       setStats({ activeRequests: 0, pendingAppointments: 0, techniciansAvailable: 0 });
       setRecentRequests([]);
@@ -69,11 +67,11 @@ export default function DashboardPage() {
 
       // Fetch Stats
       try {
-        // Query for active requests using the 'stato' field
+        const activeRequestStatuses = ["in attesa", "assegnata", "programmata", "in corso"];
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "not-in", ["Completato", "Annullato"]) // Use 'stato' and check for non-terminal statuses
+          where("stato", "in", activeRequestStatuses) 
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
 
@@ -82,14 +80,12 @@ export default function DashboardPage() {
           collection(db, "interventi_confermati"),
           where("id_azienda", "==", companyId),
           where("data_ora", ">", now) 
-          // Ideally, also filter by statuses that mean "pending" e.g., not "Completato" or "Annullato"
         );
         const pendingAppointmentsSnap = await getCountFromServer(pendingAppointmentsQuery);
 
         const techniciansQuery = query(
           collection(db, "tecnici"),
           where("id_azienda", "==", companyId)
-          // where("status", "==", "Disponibile") // If you only want to count available ones
         );
         const techniciansSnap = await getCountFromServer(techniciansQuery);
 
@@ -100,7 +96,7 @@ export default function DashboardPage() {
         });
       } catch (error) {
         console.error("Error fetching dashboard stats:", error);
-        setStats({ activeRequests: 0, pendingAppointments: 0, techniciansAvailable: 0 }); // Reset on error
+        setStats({ activeRequests: 0, pendingAppointments: 0, techniciansAvailable: 0 }); 
       } finally {
         setLoadingStats(false);
       }
@@ -118,15 +114,15 @@ export default function DashboardPage() {
           const data = doc.data();
           return {
             id: doc.id,
-            customer: data.customer || data.nome_cliente || "N/D", // Check common field names
+            customer: data.customer || data.nome_cliente || "N/D", 
             service: data.service || data.tipo_servizio || "N/D", 
-            status: data.status || data.stato || "N/D", // Check common field names for status
+            status: data.status || data.stato || "N/D", 
           };
         }) as RecentRequest[];
         setRecentRequests(fetchedRequests);
       } catch (error) {
         console.error("Error fetching recent requests:", error);
-        setRecentRequests([]); // Reset on error
+        setRecentRequests([]); 
       } finally {
         setLoadingRequests(false);
       }
