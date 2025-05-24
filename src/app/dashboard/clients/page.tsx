@@ -5,13 +5,13 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Contact, PlusCircle, Search, Edit, Trash2, Loader2, Check, Sparkles } from "lucide-react"; 
+import { Contact, PlusCircle, Search, Edit, Trash2, Loader2, Check, Sparkles, Briefcase } from "lucide-react"; 
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, addDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, addDoc, serverTimestamp, deleteDoc, getCountFromServer } from "firebase/firestore";
 import { ClientDetailsSheet, type ClientFormValues as ClientSheetFormValues } from "@/components/dashboard/clients/ClientDetailsSheet";
 
 export interface Cliente {
@@ -23,7 +23,8 @@ export interface Cliente {
   indirizzo?: string;
   note_interne?: string;
   data_creazione: Timestamp;
-  creato_automaticamente?: boolean; // NUOVO CAMPO
+  creato_automaticamente?: boolean;
+  richiesteAttive?: number; // NUOVO CAMPO
 }
 
 export default function ClientsPage() {
@@ -66,9 +67,10 @@ export default function ClientsPage() {
         orderBy("data_creazione", "desc")
       );
       const querySnapshot = await getDocs(clientsQuery);
-      const fetchedClients = querySnapshot.docs.map(docSnap => {
+      
+      const fetchedClientsPromises = querySnapshot.docs.map(async (docSnap) => {
         const data = docSnap.data();
-        return {
+        const clienteBase: Cliente = {
           id: docSnap.id,
           id_azienda: data.id_azienda,
           nome_completo: data.nome_completo || "N/D",
@@ -77,13 +79,30 @@ export default function ClientsPage() {
           indirizzo: data.indirizzo,
           note_interne: data.note_interne,
           data_creazione: data.data_creazione as Timestamp,
-          creato_automaticamente: data.creato_automaticamente === true, // NUOVO CAMPO
-        } as Cliente;
+          creato_automaticamente: data.creato_automaticamente === true,
+          richiesteAttive: 0, // Default
+        };
+
+        // Conteggio richieste attive per questo cliente
+        if (clienteBase.email) { // Assumiamo che il collegamento avvenga tramite email
+          const activeRequestsQuery = query(
+            collection(db, "richieste_clienti"),
+            where("id_azienda", "==", currentCompanyId),
+            where("email_cliente", "==", clienteBase.email),
+            where("stato", "not-in", ["completata", "annullata"])
+          );
+          const countSnapshot = await getCountFromServer(activeRequestsQuery);
+          clienteBase.richiesteAttive = countSnapshot.data().count;
+        }
+        return clienteBase;
       });
+
+      const fetchedClients = await Promise.all(fetchedClientsPromises);
       setClients(fetchedClients);
+
     } catch (error) {
-      console.error("Error fetching clients:", error);
-      toast({ title: "Errore Caricamento Clienti", description: "Impossibile caricare l'elenco dei clienti.", variant: "destructive" });
+      console.error("Error fetching clients or their active requests:", error);
+      toast({ title: "Errore Caricamento Clienti", description: "Impossibile caricare l'elenco dei clienti o le loro richieste attive.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -113,7 +132,6 @@ export default function ClientsPage() {
     if (!companyId) return;
     try {
       const clientDocRef = doc(db, "clienti", clientId);
-      // Non aggiorniamo creato_automaticamente qui, è un flag di creazione
       await updateDoc(clientDocRef, {
         ...data,
         email: data.email || null,
@@ -189,6 +207,7 @@ export default function ClientsPage() {
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Telefono</th>
                       <th className="p-3 text-center text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Note</th>
                       <th className="p-3 text-center text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Auto</th>
+                      <th className="p-3 text-center text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Rich. Attive</th> 
                       <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
                     </tr>
                   </thead>
@@ -211,6 +230,14 @@ export default function ClientsPage() {
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
+                        </td>
+                        <td className="p-3 text-sm whitespace-nowrap text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Briefcase className={`h-4 w-4 ${client.richiesteAttive && client.richiesteAttive > 0 ? 'text-primary' : 'text-muted-foreground'}`} />
+                            <span className={`${client.richiesteAttive && client.richiesteAttive > 0 ? 'font-semibold text-primary' : 'text-muted-foreground'}`}>
+                                {client.richiesteAttive ?? 0}
+                            </span>
+                          </div>
                         </td>
                         <td className="p-3 text-right text-sm whitespace-nowrap">
                           <Button variant="outline" size="sm" onClick={() => handleOpenDetailsSheet(client)}>
