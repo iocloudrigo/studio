@@ -74,7 +74,8 @@ const navItems = [
       { href: "/dashboard/requests", label: "Tutte le Richieste", icon: FileText },
       { href: "/dashboard/requests/new", label: "Nuova Richiesta", icon: MessageSquarePlus },
       { href: "/dashboard/requests/suggestions", label: "Suggerimenti AI", icon: Lightbulb },
-      { href: "/dashboard/requests?statusFilter=completata,annullata", label: "Archiviate", icon: Archive },
+      // TEMPORARILY REVERTED: "annullata" removed from filter
+      { href: "/dashboard/requests?statusFilter=completata", label: "Archiviate", icon: Archive },
     ]
   },
   { href: "/dashboard/appointments", label: "Appuntamenti", icon: CalendarDays },
@@ -267,7 +268,14 @@ export function AppSidebar() {
     }
   };
 
-  const fullCurrentUrl = currentPathname + (typeof window !== "undefined" ? window.location.search : "");
+  const getFullCurrentUrl = () => {
+    if (typeof window !== "undefined") {
+      return currentPathname + window.location.search;
+    }
+    return currentPathname;
+  };
+  const fullCurrentUrl = getFullCurrentUrl();
+
 
   return (
     <>
@@ -309,7 +317,7 @@ export function AppSidebar() {
                     {openSubmenus[item.label] && sidebarState === "expanded" && (
                       <SidebarMenuSub>
                         {item.subItems.map((subItem) => {
-                          const isActive = fullCurrentUrl === subItem.href;
+                           const isActive = fullCurrentUrl === subItem.href;
                           return (
                             <SidebarMenuSubItem key={subItem.href}>
                               <Link href={subItem.href} legacyBehavior passHref>
@@ -330,7 +338,7 @@ export function AppSidebar() {
                 ) : (
                   <Link href={item.href} legacyBehavior passHref>
                     <SidebarMenuButton
-                      isActive={currentPathname === item.href && !item.href.includes("?")}
+                      isActive={currentPathname === item.href && !item.href.includes("?statusFilter=")} // Adjusted isActive logic
                       tooltip={sidebarState === "collapsed" ? item.label : undefined}
                     >
                       <item.icon />
@@ -442,3 +450,6 @@ export function AppSidebar() {
     </>
   );
 }
+
+
+    

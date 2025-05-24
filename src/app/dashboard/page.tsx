@@ -55,6 +55,7 @@ export default function DashboardPage() {
       } else {
         setCurrentUser(null);
         setCompanyId(null);
+        // Reset stats and requests if user logs out
         setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 });
         setRecentRequests([]);
         setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false });
@@ -66,6 +67,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!companyId) {
+      // Ensure loading states are false if no companyId
       setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false });
       setLoadingRequests(false);
       setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 });
@@ -80,13 +82,13 @@ export default function DashboardPage() {
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "not-in", ["completata", "annullata"])
+          where("stato", "not-in", ["completata", "annullata"]) // This was the correct logic for active based on a later request
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
         setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
       } catch (error) {
         console.error("Error fetching active requests stats:", error);
-        toast({ title: "Errore Conteggio Richieste Attive", description: "Impossibile caricare il conteggio delle richieste attive.", variant: "destructive" });
+        toast({ title: "Errore Conteggio Richieste Attive", description: "Impossibile caricare il conteggio.", variant: "destructive" });
         setStats(prev => ({ ...prev, activeRequests: 0 }));
       } finally {
         setLoadingStats(prev => ({ ...prev, activeRequests: false }));
@@ -104,7 +106,7 @@ export default function DashboardPage() {
         setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
       } catch (error) {
         console.error("Error fetching assigned requests stats:", error);
-        toast({ title: "Errore Conteggio Richieste Assegnate", description: "Impossibile caricare il conteggio delle richieste assegnate.", variant: "destructive" });
+        toast({ title: "Errore Conteggio Richieste Assegnate", description: "Impossibile caricare il conteggio.", variant: "destructive" });
         setStats(prev => ({ ...prev, assignedRequests: 0 }));
       } finally {
         setLoadingStats(prev => ({ ...prev, assignedRequests: false }));
@@ -122,21 +124,20 @@ export default function DashboardPage() {
         setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
       } catch (error) {
         console.error("Error fetching in-progress requests stats:", error);
-        toast({ title: "Errore Conteggio Richieste In Corso", description: "Impossibile caricare il conteggio delle richieste in corso.", variant: "destructive" });
+        toast({ title: "Errore Conteggio Richieste In Corso", description: "Impossibile caricare il conteggio.", variant: "destructive" });
         setStats(prev => ({ ...prev, inProgressRequests: 0 }));
       } finally {
         setLoadingStats(prev => ({ ...prev, inProgressRequests: false }));
       }
 
-      // Fetch Recent Requests (Table) - Escludi "completata" e "annullata"
+      // Fetch Recent Requests (Table) - TEMPORARILY REVERTED: No longer filtering out "completata" or "annullata" here.
       setLoadingRequests(true);
       try {
         const requestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "not-in", ["completata", "annullata"]), 
           orderBy("created_at", "desc"),
-          limit(10)
+          limit(10) // Keeps loading 10, UI will scroll.
         );
         const requestsSnapshot = await getDocs(requestsQuery);
         const fetchedRequests = requestsSnapshot.docs.map(doc => {
@@ -184,19 +185,17 @@ export default function DashboardPage() {
       await updateDoc(requestDocRef, { stato: newStatus, ...additionalData });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
-      if (newStatus === "completata" || newStatus === "annullata") {
-        setRecentRequests(prevRequests => prevRequests.filter(req => req.id !== requestId));
-      } else {
-        setRecentRequests(prevRequests =>
-          prevRequests.map(req =>
-            req.id === requestId ? { ...req, status: newStatus, ...additionalData } : req
-          )
-        );
-      }
-
-      // Refetch stats
+      // TEMPORARILY REVERTED: Original logic that just updates the item in the list.
+      setRecentRequests(prevRequests =>
+        prevRequests.map(req =>
+          req.id === requestId ? { ...req, status: newStatus, ...additionalData } : req
+        )
+      );
+      
+      // Refetch stats that might be affected
       if (companyId) {
-        setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true }));
+        // Refetch active requests count
+        setLoadingStats(prev => ({ ...prev, activeRequests: true }));
         try {
           const activeRequestsQuery = query(
             collection(db, "richieste_clienti"),
@@ -205,34 +204,41 @@ export default function DashboardPage() {
           );
           const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
           setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
+        } catch (error) { console.error("Error refetching active requests stats:", error); }
+        finally { setLoadingStats(prev => ({ ...prev, activeRequests: false }));}
 
-          const assignedRequestsQuery = query(
-            collection(db, "richieste_clienti"),
-            where("id_azienda", "==", companyId),
-            where("stato", "==", "assegnata")
-          );
-          const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
-          setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
+        // Refetch assigned requests count
+        setLoadingStats(prev => ({ ...prev, assignedRequests: true }));
+        try {
+            const assignedRequestsQuery = query(
+              collection(db, "richieste_clienti"),
+              where("id_azienda", "==", companyId),
+              where("stato", "==", "assegnata")
+            );
+            const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
+            setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
+        } catch (error) { console.error("Error refetching assigned requests stats:", error); }
+        finally { setLoadingStats(prev => ({...prev, assignedRequests: false})); }
 
-          const inProgressRequestsQuery = query(
-            collection(db, "richieste_clienti"),
-            where("id_azienda", "==", companyId),
-            where("stato", "==", "in corso")
-          );
-          const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
-          setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
 
-        } catch (error) {
-          console.error("Error refetching stats after update:", error);
-        } finally {
-          setLoadingStats(prev => ({ ...prev, activeRequests: false, assignedRequests: false, inProgressRequests: false }));
-        }
+        // Refetch in-progress requests count
+        setLoadingStats(prev => ({ ...prev, inProgressRequests: true }));
+        try {
+            const inProgressRequestsQuery = query(
+              collection(db, "richieste_clienti"),
+              where("id_azienda", "==", companyId),
+              where("stato", "==", "in corso")
+            );
+            const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
+            setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
+        } catch (error) { console.error("Error refetching in-progress requests stats:", error); }
+        finally { setLoadingStats(prev => ({ ...prev, inProgressRequests: false}));}
       }
 
     } catch (error) {
       console.error("Error updating request status:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare lo stato della richiesta.", variant: "destructive" });
-      throw error;
+      throw error; // Re-throw per gestione superiore se necessario
     }
   };
 
@@ -268,7 +274,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </Link>
-        <Link href={`/dashboard/requests?statusFilter=${encodeURIComponent("assegnata")}`}>
+        <Link href={`/dashboard/requests?statusFilter=assegnata`}>
           <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Richieste Assegnate</CardTitle>
@@ -304,8 +310,8 @@ export default function DashboardPage() {
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Ultime Richieste (Non Chiuse)</CardTitle>
-          <CardDescription>Visualizza le richieste di intervento più recenti che non sono ancora completate o annullate.</CardDescription>
+          <CardTitle>Ultime Richieste</CardTitle> 
+          <CardDescription>Visualizza le richieste di intervento più recenti.</CardDescription>
         </CardHeader>
         <CardContent>
           {loadingRequests ? (
@@ -315,7 +321,7 @@ export default function DashboardPage() {
               <Skeleton className="h-8 w-full" />
             </div>
           ) : recentRequests.length > 0 ? (
-            <ScrollArea className="h-[380px] w-full">
+            <ScrollArea className="h-[380px] w-full"> {/* Maintained height for ~7 items */}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -367,7 +373,7 @@ export default function DashboardPage() {
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="mx-auto h-12 w-12 mb-2" />
-              <p>Nessuna richiesta recente attiva trovata.</p>
+              <p>Nessuna richiesta recente trovata.</p>
             </div>
           )}
         </CardContent>
@@ -408,4 +414,6 @@ export default function DashboardPage() {
     </div>
   );
 }
+    
+
     
