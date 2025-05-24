@@ -26,11 +26,11 @@ export interface Technician {
   competenze?: string[];
   stato: string;
   data_creazione: Timestamp;
-  richiesteAttive?: number; // Nuovo campo
+  richiesteAttive?: number; 
 }
 
 const STATI_TECNICO_ATTIVI_PER_CONTEGGIO = ["Disponibile", "Occupato"];
-const STATI_RICHIESTA_ATTIVI = ["assegnata", "programmata", "in corso"];
+const STATI_RICHIESTA_ATTIVI_PER_LINK = ["assegnata", "programmata", "in corso"];
 
 
 export default function TechniciansPage() {
@@ -78,25 +78,24 @@ export default function TechniciansPage() {
         ...docSnap.data(),
       } as Technician));
 
-      // Ora, per ogni tecnico idoneo, carica il conteggio delle richieste attive
       const techniciansWithActiveRequests = await Promise.all(
         fetchedTechniciansBase.map(async (tech) => {
           if (STATI_TECNICO_ATTIVI_PER_CONTEGGIO.includes(tech.stato)) {
             const requestsQuery = query(
               collection(db, "richieste_clienti"),
               where("id_azienda", "==", currentCompanyId),
-              where("assegnato_a_tecnico_id", "==", tech.id), // Assicurati che questo campo esista!
-              where("stato", "in", STATI_RICHIESTA_ATTIVI)
+              where("assegnato_a_tecnico_id", "==", tech.id), 
+              where("stato", "in", STATI_RICHIESTA_ATTIVI_PER_LINK)
             );
             try {
               const countSnapshot = await getCountFromServer(requestsQuery);
               tech.richiesteAttive = countSnapshot.data().count;
             } catch (countError) {
               console.error(`Errore nel conteggio richieste per tecnico ${tech.id}:`, countError);
-              tech.richiesteAttive = 0; // O undefined, o gestisci l'errore diversamente
+              tech.richiesteAttive = 0; 
             }
           } else {
-            tech.richiesteAttive = 0; // O undefined
+            tech.richiesteAttive = 0; 
           }
           return tech;
         })
@@ -147,7 +146,7 @@ export default function TechniciansPage() {
         telefono: data.telefono || null,
       });
       toast({ title: "Successo!", description: "Tecnico aggiornato con successo." });
-      if (companyId) fetchTechnicians(companyId); // Ricarica i dati per aggiornare anche il conteggio richieste
+      if (companyId) fetchTechnicians(companyId); 
     } catch (error) {
       console.error("Error updating technician:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare il tecnico.", variant: "destructive" });
@@ -182,6 +181,8 @@ export default function TechniciansPage() {
         return "bg-gray-100 text-gray-700 border-gray-200";
     }
   };
+
+  const activeStatusesQueryParamTechnician = encodeURIComponent(STATI_RICHIESTA_ATTIVI_PER_LINK.join(','));
 
 
   return (
@@ -257,12 +258,21 @@ export default function TechniciansPage() {
                         </td>
                         <td className="p-3 text-sm whitespace-nowrap text-center">
                           {STATI_TECNICO_ATTIVI_PER_CONTEGGIO.includes(tech.stato) ? (
-                            <div className="flex items-center justify-center gap-1">
-                                <Briefcase className={`h-4 w-4 ${ (tech.richiesteAttive ?? 0) > 0 ? 'text-primary' : 'text-muted-foreground'}`} />
-                                <span className={`${ (tech.richiesteAttive ?? 0) > 0 ? 'font-semibold text-primary' : 'text-muted-foreground'}`}>
-                                  {tech.richiesteAttive ?? 0}
-                                </span>
-                            </div>
+                            (tech.richiesteAttive ?? 0) > 0 ? (
+                                <Link 
+                                    href={`/dashboard/requests?statusFilter=${activeStatusesQueryParamTechnician}&technicianIdFilter=${tech.id}`}
+                                    className="flex items-center justify-center gap-1 text-primary hover:underline"
+                                    title="Visualizza richieste attive per questo tecnico"
+                                >
+                                    <Briefcase className="h-4 w-4" />
+                                    <span className="font-semibold">{tech.richiesteAttive}</span>
+                                </Link>
+                            ) : (
+                                <div className="flex items-center justify-center gap-1">
+                                    <Briefcase className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-muted-foreground">{tech.richiesteAttive ?? 0}</span>
+                                </div>
+                            )
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
@@ -306,5 +316,3 @@ export default function TechniciansPage() {
   );
 }
 
-
-    

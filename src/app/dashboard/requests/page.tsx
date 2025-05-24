@@ -27,8 +27,7 @@ import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc }
 import { format } from 'date-fns';
 
 export interface ClientRequest extends RequestSheetData { 
-  // id_azienda è già in RequestSheetData
-  // assegnato_a_tecnico_id e assegnato_a_tecnico_nome sono già in RequestSheetData
+  // assegnato_a_tecnico_id and assegnato_a_tecnico_nome are in RequestSheetData
 }
 
 const ALL_STATUSES = ["in attesa", "assegnata", "programmata", "in corso", "completata", "annullata"];
@@ -43,6 +42,8 @@ export default function AllRequestsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
+  const [activeTechnicianIdFilter, setActiveTechnicianIdFilter] = useState<string | null>(null);
+
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedRequestForSheet, setSelectedRequestForSheet] = useState<RequestSheetData | null>(null);
@@ -64,6 +65,8 @@ export default function AllRequestsPage() {
   useEffect(() => {
     const statusFilterFromUrl = searchParams.get('statusFilter');
     const searchTermFromUrl = searchParams.get('searchTerm');
+    const technicianIdFilterFromUrl = searchParams.get('technicianIdFilter');
+
 
     if (statusFilterFromUrl) {
       const statuses = statusFilterFromUrl.split(',').map(s => decodeURIComponent(s.trim()));
@@ -81,6 +84,12 @@ export default function AllRequestsPage() {
       setSearchTerm(decodeURIComponent(searchTermFromUrl));
     } else {
       setSearchTerm("");
+    }
+
+    if (technicianIdFilterFromUrl) {
+      setActiveTechnicianIdFilter(decodeURIComponent(technicianIdFilterFromUrl));
+    } else {
+      setActiveTechnicianIdFilter(null);
     }
   }, [searchParams]);
 
@@ -105,7 +114,7 @@ export default function AllRequestsPage() {
           const data = docSnap.data();
           return {
             id: docSnap.id,
-            id_azienda: data.id_azienda, // Assicurati che sia qui
+            id_azienda: data.id_azienda, 
             customer: data.nome_cliente || "N/D", 
             service: data.tipo_servizio || "N/D", 
             status: data.stato || "N/D", 
@@ -119,8 +128,8 @@ export default function AllRequestsPage() {
             completata_da_collaboratore_id: data.completata_da_collaboratore_id,
             completata_da_collaboratore_nome: data.completata_da_collaboratore_nome,
             data_completamento: data.data_completamento as Timestamp | undefined,
-            assegnato_a_tecnico_id: data.assegnato_a_tecnico_id, // Aggiunto
-            assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome, // Aggiunto
+            assegnato_a_tecnico_id: data.assegnato_a_tecnico_id, 
+            assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome, 
           } as ClientRequest;
         });
         setAllRequests(fetchedRequests);
@@ -148,13 +157,17 @@ export default function AllRequestsPage() {
         req.id.toLowerCase().includes(searchTermLower) ||
         req.customer.toLowerCase().includes(searchTermLower) || 
         (req.email_cliente && req.email_cliente.toLowerCase().includes(searchTermLower)) || 
-        req.service.toLowerCase().includes(searchTermLower); 
+        req.service.toLowerCase().includes(searchTermLower) ||
+        (req.assegnato_a_tecnico_nome && req.assegnato_a_tecnico_nome.toLowerCase().includes(searchTermLower));
+
 
       const matchesStatus = activeStatusFilters.length === 0 || activeStatusFilters.includes(req.status); 
 
-      return matchesSearch && matchesStatus;
+      const matchesTechnician = !activeTechnicianIdFilter || req.assegnato_a_tecnico_id === activeTechnicianIdFilter;
+
+      return matchesSearch && matchesStatus && matchesTechnician;
     });
-  }, [allRequests, searchTerm, activeStatusFilters]);
+  }, [allRequests, searchTerm, activeStatusFilters, activeTechnicianIdFilter]);
 
   const handleOpenDetailsSheet = (request: ClientRequest) => {
     setSelectedRequestForSheet(request);
@@ -206,7 +219,7 @@ export default function AllRequestsPage() {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Cerca per ID, cliente, email, servizio..."
+                placeholder="Cerca per ID, cliente, email, servizio, tecnico..."
                 className="pl-10 w-full md:w-auto"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -231,22 +244,33 @@ export default function AllRequestsPage() {
                     {status.replace("_", " ")}
                   </DropdownMenuCheckboxItem>
                 ))}
-                {activeStatusFilters.length > 0 && (
+                {(activeStatusFilters.length > 0 || activeTechnicianIdFilter) && (
                   <>
                     <DropdownMenuSeparator />
                     <Button
                       variant="ghost"
                       size="sm"
                       className="w-full justify-start text-sm text-destructive hover:text-destructive"
-                      onClick={() => setActiveStatusFilters([])}
+                      onClick={() => {
+                        setActiveStatusFilters([]);
+                        setActiveTechnicianIdFilter(null);
+                        // Optionally clear search term as well or reset URL
+                        const currentPath = window.location.pathname;
+                        window.history.replaceState({}, '', currentPath); // Clears query params
+                      }}
                     >
-                      Rimuovi Filtri
+                      Rimuovi Tutti i Filtri
                     </Button>
                   </>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+          {activeTechnicianIdFilter && technicians.length > 0 && (
+            <div className="mt-2 text-sm text-muted-foreground">
+              Filtro tecnico attivo: <Badge variant="secondary">{technicians.find(t => t.id === activeTechnicianIdFilter)?.nome_completo || activeTechnicianIdFilter}</Badge>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -260,6 +284,7 @@ export default function AllRequestsPage() {
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">ID Richiesta</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Cliente</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Servizio</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Tecnico Assegnato</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Data Creazione</th>
                       <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
@@ -271,6 +296,7 @@ export default function AllRequestsPage() {
                         <td className="p-3 text-sm font-medium text-primary whitespace-nowrap">{req.id.substring(0, 8)}...</td>
                         <td className="p-3 text-sm whitespace-nowrap">{req.customer}</td>
                         <td className="p-3 text-sm">{req.service}</td>
+                        <td className="p-3 text-sm whitespace-nowrap">{req.assegnato_a_tecnico_nome || "N/D"}</td>
                         <td className="p-3 text-sm whitespace-nowrap">
                           <Badge variant={
                               req.status === "completata" ? "default" :
@@ -325,4 +351,7 @@ export default function AllRequestsPage() {
   );
 }
 
-    
+// Dummy technicians data for displaying technician name in filter header, replace with actual fetch if needed
+const technicians = [
+  // Example: { id: "techId1", nome_completo: "Mario Rossi" }
+];
