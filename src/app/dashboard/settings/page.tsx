@@ -11,12 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Upload } from "lucide-react";
-import { useEffect, useState, useRef } from "react";
-import { auth, db, storage } from "@/lib/firebase";
+import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Users, PlusCircle, Mail, BriefcaseIcon } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, updateProfile, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, setDoc, query, where, collection, getDocs } from "firebase/firestore";
-// import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // Commentato perché non più usato
+import { doc, getDoc, setDoc, query, where, collection, getDocs, addDoc, serverTimestamp, orderBy } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import {
   Form,
@@ -27,6 +26,13 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Zod Schemas
 const companyFormSchema = z.object({
@@ -47,6 +53,21 @@ const profileFormSchema = z.object({
 });
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
+const collaboratorFormSchema = z.object({
+  nome_completo: z.string().min(2, { message: "Il nome completo è richiesto."}),
+  email: z.string().email({ message: "Indirizzo email non valido."}),
+  ruolo: z.string().min(1, { message: "Il ruolo è richiesto."}),
+});
+type CollaboratorFormValues = z.infer<typeof collaboratorFormSchema>;
+
+interface Collaborator {
+  id: string;
+  nome_completo: string;
+  email: string;
+  ruolo: string;
+  // data_creazione: Timestamp; // Consider adding if needed for display
+}
+
 // Helper per generare slug
 const generateSlug = (name: string): string => {
   if (!name) return "";
@@ -58,18 +79,23 @@ const generateSlug = (name: string): string => {
     .replace(/--+/g, '-');
 };
 
+const RUOLI_COLLABORATORI = ["Amministratore", "Operatore", "Responsabile"];
+
 
 export default function SettingsPage() {
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [companyData, setCompanyData] = useState<Partial<CompanyFormValues & { email_admin?: string; sede_citta?: string }>>({});
   const [loadingData, setLoadingData] = useState(true);
   const [isSavingCompany, setIsSavingCompany] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSlugManuallyEditedCompany, setIsSlugManuallyEditedCompany] = useState(false);
   
-  // const logoFileInputRef = useRef<HTMLInputElement>(null); // Commentato perché non più usato
-  // const [isUploadingLogo, setIsUploadingLogo] = useState(false); // Commentato perché non più usato
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(false);
+  const [isAddingCollaborator, setIsAddingCollaborator] = useState(false);
+
 
   const companyForm = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
@@ -90,10 +116,39 @@ export default function SettingsPage() {
     },
   });
 
+  const collaboratorForm = useForm<CollaboratorFormValues>({
+    resolver: zodResolver(collaboratorFormSchema),
+    defaultValues: {
+      nome_completo: "",
+      email: "",
+      ruolo: "",
+    },
+  });
+
+  const fetchCollaborators = useCallback(async (currentCompanyId: string) => {
+    if (!currentCompanyId) return;
+    setIsLoadingCollaborators(true);
+    try {
+      const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", currentCompanyId), orderBy("data_creazione", "desc"));
+      const querySnapshot = await getDocs(q);
+      const fetchedCollaborators = querySnapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      } as Collaborator));
+      setCollaborators(fetchedCollaborators);
+    } catch (error) {
+      console.error("Errore nel caricare i collaboratori:", error);
+      toast({ title: "Errore Caricamento Collaboratori", description: "Impossibile caricare l'elenco dei collaboratori.", variant: "destructive" });
+    } finally {
+      setIsLoadingCollaborators(false);
+    }
+  }, [toast]);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
+        setCompanyId(user.uid);
         profileForm.reset({ displayName: user.displayName || "" });
 
         try {
@@ -112,6 +167,7 @@ export default function SettingsPage() {
             setCompanyData(loadedCompanyData);
             companyForm.reset(loadedCompanyData);
             if (data.slug) setIsSlugManuallyEditedCompany(true);
+            fetchCollaborators(user.uid); // Fetch collaborators after company ID is set
           } else {
              companyForm.reset({
                 logoUrl: "https://placehold.co/100x100.png?text=Logo",
@@ -126,11 +182,12 @@ export default function SettingsPage() {
         }
       } else {
         setCurrentUser(null);
+        setCompanyId(null);
       }
       setLoadingData(false);
     });
     return () => unsubscribe();
-  }, [companyForm, profileForm, toast]);
+  }, [companyForm, profileForm, toast, fetchCollaborators]);
 
   const companyNameValue = companyForm.watch("nome");
   const companySlugValue = companyForm.watch("slug");
@@ -145,7 +202,6 @@ export default function SettingsPage() {
     }
   }, [companyNameValue, companyForm, isSlugManuallyEditedCompany]);
 
-  // handleLogoFileChange è stata rimossa perché la funzionalità di upload è disabilitata
 
   async function onSubmitCompany(data: CompanyFormValues) {
     if (!currentUser) {
@@ -158,20 +214,14 @@ export default function SettingsPage() {
       const currentCompanyDataSnap = await getDoc(companyDocRef);
       const currentSlug = currentCompanyDataSnap.exists() ? currentCompanyDataSnap.data().slug : null;
 
-      const finalSlug = generateSlug(data.slug);
-       if (finalSlug !== data.slug && data.slug.trim() !== "") {
-          companyForm.setValue("slug", finalSlug, { shouldValidate: true });
-      } else if (data.slug.trim() === "" && companyForm.getValues("nome")) {
-          const regeneratedSlug = generateSlug(companyForm.getValues("nome"));
-          companyForm.setValue("slug", regeneratedSlug, { shouldValidate: true });
-          data.slug = regeneratedSlug;
-      } else if (data.slug.trim() === "" && !companyForm.getValues("nome")) {
-          companyForm.setError("slug", { type: "manual", message: "Lo slug è richiesto o il nome azienda per generarlo." });
-          setIsSavingCompany(false);
-          return;
+      let finalSlug = data.slug;
+      if (data.slug.trim() === "") {
+        finalSlug = generateSlug(data.nome) || `azienda-${currentUser.uid.substring(0,6)}`;
+      } else {
+        finalSlug = generateSlug(data.slug);
       }
       
-      const validatedData = companyFormSchema.parse({...data, slug: data.slug});
+      const validatedData = companyFormSchema.parse({...data, slug: finalSlug});
 
       if (validatedData.slug !== currentSlug) {
         const slugQuery = query(collection(db, "aziende"), where("slug", "==", validatedData.slug));
@@ -206,6 +256,8 @@ export default function SettingsPage() {
       await setDoc(companyDocRef, dataToUpdate, { merge: true });
       
       setCompanyData(prev => ({...prev, ...dataToUpdate}));
+      companyForm.reset(dataToUpdate); // Reset form with saved data including potentially normalized slug
+      setIsSlugManuallyEditedCompany(true); // Assume slug is now "manual" after save
       toast({ title: "Successo!", description: "Dati aziendali aggiornati." });
     } catch (error: any) {
       console.error("Errore salvataggio dati azienda:", error);
@@ -239,6 +291,41 @@ export default function SettingsPage() {
       setIsSavingProfile(false);
     }
   }
+
+  async function onAddCollaborator(data: CollaboratorFormValues) {
+    if (!companyId) {
+      toast({ title: "Errore", description: "ID Azienda non trovato.", variant: "destructive" });
+      return;
+    }
+    setIsAddingCollaborator(true);
+    try {
+      // Check if email already exists for this company
+      const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", companyId), where("email", "==", data.email));
+      const emailCheckSnapshot = await getDocs(q);
+      if (!emailCheckSnapshot.empty) {
+        collaboratorForm.setError("email", { type: "manual", message: "Questa email è già in uso per un collaboratore." });
+        toast({ title: "Errore", description: "Email già utilizzata per un collaboratore.", variant: "destructive" });
+        setIsAddingCollaborator(false);
+        return;
+      }
+
+      const collaboratorData = {
+        ...data,
+        id_azienda: companyId,
+        data_creazione: serverTimestamp(),
+      };
+      await addDoc(collection(db, "collaboratori_azienda"), collaboratorData);
+      toast({ title: "Successo!", description: "Nuovo collaboratore aggiunto." });
+      collaboratorForm.reset();
+      fetchCollaborators(companyId); // Refresh the list
+    } catch (error: any) {
+      console.error("Errore aggiunta collaboratore:", error);
+      toast({ title: "Errore Aggiunta", description: error.message || "Impossibile aggiungere il collaboratore.", variant: "destructive" });
+    } finally {
+      setIsAddingCollaborator(false);
+    }
+  }
+
 
   if (loadingData) {
     return (
@@ -282,22 +369,11 @@ export default function SettingsPage() {
                       />
                       <AvatarFallback>{(companyForm.getValues("nome") || "L").substring(0,1).toUpperCase()}</AvatarFallback>
                     </Avatar>
-                    {/* Input file rimosso, non più necessario per ora 
-                    <input
-                        type="file"
-                        ref={logoFileInputRef}
-                        onChange={handleLogoFileChange}
-                        accept="image/png, image/jpeg, image/gif, image/webp"
-                        className="hidden"
-                    /> */}
                     <Button 
                         variant="outline" 
                         type="button" 
-                        disabled // Reso il pulsante disabilitato
-                        // onClick={() => logoFileInputRef.current?.click()} // Rimosso onClick
-                        // disabled={isUploadingLogo || isSavingCompany} // Rimosso disabled condizionale
+                        disabled 
                     >
-                        {/* Icona Upload e Loader rimossi, testo aggiornato */}
                         Cambia Logo (Prossimamente)
                     </Button>
                   </div>
@@ -345,9 +421,10 @@ export default function SettingsPage() {
                                 disabled={isSavingCompany}
                                 onBlur={(e) => {
                                     const manualSlug = generateSlug(e.target.value);
-                                    if (e.target.value.trim() === "") { 
-                                        field.onChange(""); 
-                                    } else if (e.target.value !== manualSlug) {
+                                    if (e.target.value.trim() === "" && companyNameValue) { 
+                                        field.onChange(generateSlug(companyNameValue));
+                                        companyForm.trigger("slug");
+                                    } else if (e.target.value.trim() !== "" && e.target.value !== manualSlug) {
                                         field.onChange(manualSlug);
                                         companyForm.trigger("slug");
                                     }
@@ -412,9 +489,9 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="profile">
-          <Card className="shadow-lg">
+          <Card className="shadow-lg mb-6">
             <CardHeader>
-              <CardTitle>Profilo Utente</CardTitle>
+              <CardTitle>Profilo Utente Amministratore</CardTitle>
               <CardDescription>Gestisci le informazioni del tuo account personale.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -433,7 +510,7 @@ export default function SettingsPage() {
                     name="displayName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Nome Completo</FormLabel>
+                        <FormLabel>Nome Completo (Visibile Internamente)</FormLabel>
                         <FormControl>
                           <Input {...field} disabled={isSavingProfile} />
                         </FormControl>
@@ -446,8 +523,8 @@ export default function SettingsPage() {
                     <Input id="userEmail" type="email" value={currentUser?.email || ""} disabled />
                   </div>
                   <div>
-                    <Label htmlFor="userRole">Ruolo</Label>
-                    <Input id="userRole" value={"Amministratore"} disabled />
+                    <Label htmlFor="userRole">Ruolo Principale</Label>
+                    <Input id="userRole" value={"Amministratore Azienda"} disabled />
                   </div>
                   <Button type="submit" disabled={isSavingProfile} className="bg-accent hover:bg-accent/90 text-accent-foreground">
                      {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -455,6 +532,118 @@ export default function SettingsPage() {
                   </Button>
                 </form>
               </Form>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>Gestione Utenti Collaboratori</CardTitle>
+              <CardDescription>Aggiungi e visualizza i collaboratori che possono gestire le richieste per la tua azienda.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form {...collaboratorForm}>
+                <form onSubmit={collaboratorForm.handleSubmit(onAddCollaborator)} className="space-y-6 mb-8 p-4 border rounded-lg">
+                  <h3 className="text-lg font-medium">Aggiungi Nuovo Collaboratore</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={collaboratorForm.control}
+                      name="nome_completo"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Nome Completo</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <UserCircle className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <Input placeholder="Mario Rossi" {...field} className="pl-10" disabled={isAddingCollaborator} />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={collaboratorForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email Collaboratore</FormLabel>
+                          <FormControl>
+                             <div className="relative">
+                              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <Input type="email" placeholder="collaboratore@email.com" className="pl-10" {...field} disabled={isAddingCollaborator} />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={collaboratorForm.control}
+                    name="ruolo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Ruolo</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isAddingCollaborator}>
+                          <FormControl>
+                            <div className="relative">
+                              <BriefcaseIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <SelectTrigger className="pl-10">
+                                <SelectValue placeholder="Seleziona un ruolo..." />
+                              </SelectTrigger>
+                            </div>
+                          </FormControl>
+                          <SelectContent>
+                            {RUOLI_COLLABORATORI.map(ruolo => (
+                              <SelectItem key={ruolo} value={ruolo}>{ruolo}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" disabled={isAddingCollaborator} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                    {isAddingCollaborator ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                    Aggiungi Collaboratore
+                  </Button>
+                </form>
+              </Form>
+              
+              <Separator className="my-6" />
+
+              <div>
+                <h3 className="text-lg font-medium mb-4">Collaboratori Registrati</h3>
+                {isLoadingCollaborators ? (
+                  <div className="flex items-center justify-center p-6">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="ml-2 text-muted-foreground">Caricamento collaboratori...</p>
+                  </div>
+                ) : collaborators.length > 0 ? (
+                  <ul className="space-y-3">
+                    {collaborators.map(collab => (
+                      <li key={collab.id} className="flex items-center justify-between p-3 border rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
+                        <div className="flex items-center gap-3">
+                           <Avatar className="h-9 w-9">
+                              <AvatarImage src={`https://placehold.co/40x40.png?text=${collab.nome_completo.substring(0,1).toUpperCase()}`} alt={collab.nome_completo} data-ai-hint="person letter"/>
+                              <AvatarFallback>{collab.nome_completo.substring(0,2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                          <div>
+                            <p className="font-medium">{collab.nome_completo}</p>
+                            <p className="text-xs text-muted-foreground">{collab.email}</p>
+                          </div>
+                        </div>
+                        <span className="text-sm bg-secondary text-secondary-foreground px-2 py-1 rounded-full">{collab.ruolo}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <Users className="mx-auto h-10 w-10 mb-2" />
+                    <p>Nessun collaboratore aggiunto per questa azienda.</p>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
