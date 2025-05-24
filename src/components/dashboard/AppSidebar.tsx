@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Logo } from "@/components/shared/Logo";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation"; // Added useRouter
 import {
   LayoutDashboard,
   FileText,
@@ -28,13 +28,14 @@ import {
   Lightbulb,
   ChevronDown,
   ChevronUp,
+  LogOut, // Added LogOut icon
 } from "lucide-react";
 import { Button } from "../ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-// Removed Image import as the upgrade banner is removed
-// import Image from "next/image"; 
-import { Card, CardContent } from "@/components/ui/card"; // Keep Card for potential future use, but not used now
+import { signOut } from "firebase/auth"; // Added signOut
+import { auth } from "@/lib/firebase"; // Added auth instance
+import { useToast } from "@/hooks/use-toast"; // Added useToast
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -54,11 +55,40 @@ const navItems = [
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { state: sidebarState } = useSidebar();
+  const { state: sidebarState, isMobile } = useSidebar();
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
+  const router = useRouter();
+  const { toast } = useToast();
+
+  // Collapse submenus when sidebar collapses or on mobile initially
+  useEffect(() => {
+    if (sidebarState === "collapsed" || isMobile) {
+      setOpenSubmenus({});
+    }
+  }, [sidebarState, isMobile]);
 
   const toggleSubmenu = (label: string) => {
-    setOpenSubmenus(prev => ({ ...prev, [label]: !prev[label] }));
+    if (sidebarState === "expanded") {
+      setOpenSubmenus(prev => ({ ...prev, [label]: !prev[label] }));
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      toast({
+        title: "Logout Effettuato",
+        description: "Sei stato disconnesso con successo.",
+      });
+      router.push("/"); // Redirect to login page (root)
+    } catch (error) {
+      console.error("Errore durante il logout:", error);
+      toast({
+        title: "Errore Logout",
+        description: "Impossibile effettuare il logout. Riprova.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -89,6 +119,7 @@ export function AppSidebar() {
                     )}
                     onClick={() => toggleSubmenu(item.label)}
                     title={item.label}
+                    disabled={sidebarState === "collapsed"} // Disable accordion behavior when collapsed
                   >
                     <div className="flex items-center gap-2">
                       <item.icon className="h-4 w-4 shrink-0" />
@@ -105,7 +136,6 @@ export function AppSidebar() {
                               isActive={pathname === subItem.href}
                               className="gap-2"
                             >
-                              {/* <subItem.icon className="h-4 w-4 shrink-0" /> */}
                               <span>{subItem.label}</span>
                             </SidebarMenuSubButton>
                           </Link>
@@ -129,22 +159,22 @@ export function AppSidebar() {
           ))}
         </SidebarMenu>
       </SidebarContent>
-      {/* Removed the Upgrade Plan Card from the SidebarFooter */}
-      {/* {sidebarState === "expanded" && (
-        <>
-          <SidebarSeparator />
-          <SidebarFooter className="p-4 border-t">
-             <Card className="bg-accent/10 border-accent/30">
-                <CardContent className="p-4 text-center">
-                  <Image src="https://placehold.co/200x100.png?text=Upgrade" alt="Upgrade Plan" width={200} height={100} className="mx-auto mb-2 rounded data-ai-hint='banner advertisement'" />
-                  <p className="text-sm font-semibold text-foreground mb-1">Potenzia il tuo piano!</p>
-                  <p className="text-xs text-muted-foreground mb-3">Sblocca funzionalità avanzate e supporto prioritario.</p>
-                  <Button size="sm" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">Scopri di più</Button>
-                </CardContent>
-              </Card>
-          </SidebarFooter>
-        </>
-      )} */}
+      
+      <SidebarSeparator />
+      <SidebarFooter className="p-2 border-t">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={handleLogout}
+              tooltip={sidebarState === "collapsed" ? "Esci" : undefined}
+              className="w-full"
+            >
+              <LogOut />
+              {sidebarState === "expanded" && <span>Esci</span>}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }
