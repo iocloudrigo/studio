@@ -4,7 +4,7 @@ import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Image from "next/image";
-import { CheckCircle, Users, Zap, Target } from "lucide-react";
+import { CheckCircle, Users, Zap, Target, UserPlus, Link2, ListChecks, CalendarCog } from "lucide-react";
 
 export default function LandingPage() {
   return (
@@ -101,8 +101,55 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Perché Scegliere Incastro Section */}
+        {/* Come Funziona Section */}
         <section className="py-12 md:py-20">
+          <div className="container mx-auto max-w-screen-lg px-4">
+            <h2 className="mb-12 text-center text-3xl font-bold text-primary">
+              Come Funziona Incastro?
+            </h2>
+            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+              <div className="flex flex-col items-center text-center p-4">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-accent">
+                  <UserPlus className="h-8 w-8" />
+                </div>
+                <h3 className="mb-2 text-xl font-semibold">1. Registrati</h3>
+                <p className="text-sm text-muted-foreground">
+                  Crea il tuo account e configura i dettagli della tua attività in pochi minuti.
+                </p>
+              </div>
+              <div className="flex flex-col items-center text-center p-4">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-accent">
+                  <Link2 className="h-8 w-8" />
+                </div>
+                <h3 className="mb-2 text-xl font-semibold">2. Link Unico</h3>
+                <p className="text-sm text-muted-foreground">
+                  Ottieni un link personalizzato da condividere con i tuoi clienti per ricevere richieste.
+                </p>
+              </div>
+              <div className="flex flex-col items-center text-center p-4">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-accent">
+                  <ListChecks className="h-8 w-8" />
+                </div>
+                <h3 className="mb-2 text-xl font-semibold">3. Ricevi Richieste</h3>
+                <p className="text-sm text-muted-foreground">
+                  Le richieste inviate dai clienti appaiono direttamente nella tua dashboard.
+                </p>
+              </div>
+              <div className="flex flex-col items-center text-center p-4">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-accent">
+                  <CalendarCog className="h-8 w-8" />
+                </div>
+                <h3 className="mb-2 text-xl font-semibold">4. Organizza</h3>
+                <p className="text-sm text-muted-foreground">
+                  Gestisci interventi, assegna tecnici, programma appuntamenti e monitora lo stato.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Perché Scegliere Incastro Section */}
+        <section className="py-12 md:py-20 bg-muted/50">
           <div className="container mx-auto max-w-screen-lg px-4">
             <h2 className="mb-10 text-center text-3xl font-bold text-primary">
               Perché Scegliere Incastro?
