@@ -182,7 +182,7 @@ export function UnifiedRegisterForm() {
         telefono_contatto: data.companyPhone || null,
         settore_attivita: data.activitySector === "unspecified" || !data.activitySector ? null : data.activitySector,
         sede_citta: data.companyCity || null,
-        contatore_richieste: 0, // Inizializza il contatore a 0
+        // contatore_richieste: 0, // Rimosso come da richiesta
         data_creazione: serverTimestamp(),
       };
 
