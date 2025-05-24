@@ -11,11 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon } from "lucide-react";
-import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
+import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Upload } from "lucide-react"; // Aggiunto Upload
+import { useEffect, useState, useRef } from "react"; // Aggiunto useRef
+import { auth, db, storage } from "@/lib/firebase"; // Aggiunto storage
 import { onAuthStateChanged, updateProfile, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, setDoc, query, where, collection, getDocs, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, query, where, collection, getDocs } from "firebase/firestore";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // Aggiunte importazioni per Storage
 import { useToast } from "@/hooks/use-toast";
 import {
   Form,
@@ -32,7 +33,7 @@ const companyFormSchema = z.object({
   nome: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
   email_contatto: z.string().email({ message: "Indirizzo email non valido." }).optional().or(z.literal("")),
   telefono_contatto: z.string().optional(),
-  indirizzo_completo: z.string().optional(), 
+  indirizzo_completo: z.string().optional(),
   slug: z.string()
     .min(1, { message: "Lo slug è richiesto." })
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: "Slug non valido. Usa solo lettere minuscole, numeri e trattini singoli." })
@@ -52,9 +53,9 @@ const generateSlug = (name: string): string => {
   return name
     .toLowerCase()
     .trim()
-    .replace(/\s+/g, '-') 
-    .replace(/[^\w-]+/g, '') 
-    .replace(/--+/g, '-'); 
+    .replace(/\s+/g, '-')
+    .replace(/[^\w-]+/g, '')
+    .replace(/--+/g, '-');
 };
 
 
@@ -66,6 +67,9 @@ export default function SettingsPage() {
   const [isSavingCompany, setIsSavingCompany] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSlugManuallyEditedCompany, setIsSlugManuallyEditedCompany] = useState(false);
+  
+  const logoFileInputRef = useRef<HTMLInputElement>(null); // Ref per l'input file del logo
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   const companyForm = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
@@ -86,7 +90,6 @@ export default function SettingsPage() {
     },
   });
 
-  // Fetch current user and company data
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -100,7 +103,7 @@ export default function SettingsPage() {
             const data = companyDocSnap.data();
             const loadedCompanyData = {
               nome: data.nome || "",
-              email_contatto: data.email_contatto || data.email_admin || "", 
+              email_contatto: data.email_contatto || data.email_admin || "",
               telefono_contatto: data.telefono_contatto || "",
               indirizzo_completo: data.indirizzo_completo || data.sede_citta || "",
               slug: data.slug || "",
@@ -108,12 +111,13 @@ export default function SettingsPage() {
             };
             setCompanyData(loadedCompanyData);
             companyForm.reset(loadedCompanyData);
+            if (data.slug) setIsSlugManuallyEditedCompany(true); // Se esiste uno slug, consideralo modificato manualmente per evitare sovrascrittura
           } else {
              companyForm.reset({
                 logoUrl: "https://placehold.co/100x100.png?text=Logo",
                 nome: "",
-                email_contatto: user.email || "", // Precompila con l'email dell'utente se l'azienda è nuova
-                slug: generateSlug(user.displayName || "mia-azienda"), // Slug di fallback
+                email_contatto: user.email || "",
+                slug: generateSlug(user.displayName || "mia-azienda"),
              });
           }
         } catch (error) {
@@ -122,7 +126,6 @@ export default function SettingsPage() {
         }
       } else {
         setCurrentUser(null);
-        // TODO: router.push('/') se l'utente non è autenticato? AuthRedirectHandler dovrebbe già gestirlo.
       }
       setLoadingData(false);
     });
@@ -131,6 +134,7 @@ export default function SettingsPage() {
 
   const companyNameValue = companyForm.watch("nome");
   const companySlugValue = companyForm.watch("slug");
+  const companyLogoUrlValue = companyForm.watch("logoUrl");
 
   useEffect(() => {
     if (!isSlugManuallyEditedCompany && companyNameValue && !companyForm.formState.dirtyFields.slug) {
@@ -140,6 +144,55 @@ export default function SettingsPage() {
       }
     }
   }, [companyNameValue, companyForm, isSlugManuallyEditedCompany]);
+
+  const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!currentUser) {
+      toast({ title: "Errore", description: "Utente non autenticato.", variant: "destructive" });
+      return;
+    }
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) { // Limite 5MB
+      toast({ title: "File troppo grande", description: "Il logo non deve superare i 5MB.", variant: "destructive" });
+      return;
+    }
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+      toast({ title: "Formato non supportato", description: "Carica un file JPG, PNG, GIF o WEBP.", variant: "destructive" });
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const logoStorageRef = storageRef(storage, `logos/${currentUser.uid}/${file.name}`);
+      const uploadTask = uploadBytesResumable(logoStorageRef, file);
+
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          // Opzionale: gestire il progresso dell'upload
+          // const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          // console.log('Upload is ' + progress + '% done');
+        },
+        (error) => {
+          console.error("Errore upload logo:", error);
+          toast({ title: "Errore Upload Logo", description: "Impossibile caricare il logo. Riprova.", variant: "destructive" });
+          setIsUploadingLogo(false);
+        },
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          companyForm.setValue("logoUrl", downloadURL, { shouldValidate: true, shouldDirty: true });
+          setCompanyData(prev => ({ ...prev, logoUrl: downloadURL }));
+          toast({ title: "Logo Caricato!", description: "Il nuovo logo è stato caricato. Salva le modifiche per applicarlo." });
+          setIsUploadingLogo(false);
+        }
+      );
+    } catch (error) {
+      console.error("Errore durante l'avvio dell'upload:", error);
+      toast({ title: "Errore Upload", description: "Si è verificato un errore imprevisto durante il caricamento.", variant: "destructive" });
+      setIsUploadingLogo(false);
+    }
+  };
+
 
   async function onSubmitCompany(data: CompanyFormValues) {
     if (!currentUser) {
@@ -153,15 +206,22 @@ export default function SettingsPage() {
       const currentSlug = currentCompanyDataSnap.exists() ? currentCompanyDataSnap.data().slug : null;
 
       const finalSlug = generateSlug(data.slug);
-       if (finalSlug !== data.slug) {
-          companyForm.setValue("slug", finalSlug, { shouldValidate: true }); // Aggiorna il valore nel form
+       if (finalSlug !== data.slug && data.slug.trim() !== "") { // Solo se lo slug è stato modificato e non è vuoto
+          companyForm.setValue("slug", finalSlug, { shouldValidate: true });
+      } else if (data.slug.trim() === "" && companyForm.getValues("nome")) { // Se slug è vuoto ma nome esiste, rigeneralo
+          const regeneratedSlug = generateSlug(companyForm.getValues("nome"));
+          companyForm.setValue("slug", regeneratedSlug, { shouldValidate: true });
+          data.slug = regeneratedSlug; // aggiorna i dati da validare
+      } else if (data.slug.trim() === "" && !companyForm.getValues("nome")) { // se entrambi sono vuoti, errore
+          companyForm.setError("slug", { type: "manual", message: "Lo slug è richiesto o il nome azienda per generarlo." });
+          setIsSavingCompany(false);
+          return;
       }
       
-      // Riconvalida i dati con lo slug normalizzato
-      const validatedData = companyFormSchema.parse({...data, slug: finalSlug});
+      const validatedData = companyFormSchema.parse({...data, slug: data.slug}); // Usa data.slug che è stato aggiornato
 
-      if (finalSlug !== currentSlug) {
-        const slugQuery = query(collection(db, "aziende"), where("slug", "==", finalSlug));
+      if (validatedData.slug !== currentSlug) {
+        const slugQuery = query(collection(db, "aziende"), where("slug", "==", validatedData.slug));
         const slugQuerySnapshot = await getDocs(slugQuery);
         if (!slugQuerySnapshot.empty) {
           let slugTaken = false;
@@ -184,14 +244,13 @@ export default function SettingsPage() {
         email_contatto: validatedData.email_contatto || null,
         telefono_contatto: validatedData.telefono_contatto || null,
         indirizzo_completo: validatedData.indirizzo_completo || null,
-        slug: finalSlug,
+        slug: validatedData.slug,
         logoUrl: validatedData.logoUrl || "https://placehold.co/100x100.png?text=Logo",
-        // Mantenere i campi esistenti se non sono nel form ma sono importanti
-        email_admin: currentUser.email, 
+        email_admin: currentUser.email,
         uid_admin: currentUser.uid,
       };
 
-      await setDoc(companyDocRef, dataToUpdate, { merge: true }); // Usa merge:true per aggiornare o creare
+      await setDoc(companyDocRef, dataToUpdate, { merge: true });
       
       setCompanyData(prev => ({...prev, ...dataToUpdate}));
       toast({ title: "Successo!", description: "Dati aziendali aggiornati." });
@@ -263,10 +322,29 @@ export default function SettingsPage() {
                 <form onSubmit={companyForm.handleSubmit(onSubmitCompany)} className="space-y-6">
                   <div className="flex items-center gap-4">
                     <Avatar className="h-20 w-20">
-                      <AvatarImage src={companyForm.getValues("logoUrl") || "https://placehold.co/100x100.png?text=Logo"} alt={companyForm.getValues("nome")} data-ai-hint="company logo"/>
+                      <AvatarImage 
+                        src={companyLogoUrlValue || "https://placehold.co/100x100.png?text=Logo"} 
+                        alt={companyForm.getValues("nome")} 
+                        data-ai-hint="company logo"
+                      />
                       <AvatarFallback>{(companyForm.getValues("nome") || "L").substring(0,1).toUpperCase()}</AvatarFallback>
                     </Avatar>
-                    <Button variant="outline" type="button" disabled>Cambia Logo (Prossimamente)</Button>
+                    <input
+                        type="file"
+                        ref={logoFileInputRef}
+                        onChange={handleLogoFileChange}
+                        accept="image/png, image/jpeg, image/gif, image/webp"
+                        className="hidden"
+                    />
+                    <Button 
+                        variant="outline" 
+                        type="button" 
+                        onClick={() => logoFileInputRef.current?.click()}
+                        disabled={isUploadingLogo || isSavingCompany}
+                    >
+                        {isUploadingLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                        {isUploadingLogo ? "Caricamento..." : "Cambia Logo"}
+                    </Button>
                   </div>
                   <Separator />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -277,7 +355,7 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Nome Azienda</FormLabel>
                           <FormControl>
-                            <Input {...field} disabled={isSavingCompany} />
+                            <Input {...field} disabled={isSavingCompany || isUploadingLogo} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -290,7 +368,7 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Email Contatto Aziendale</FormLabel>
                           <FormControl>
-                            <Input type="email" {...field} disabled={isSavingCompany} placeholder="info@azienda.com"/>
+                            <Input type="email" {...field} disabled={isSavingCompany || isUploadingLogo} placeholder="info@azienda.com"/>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -309,18 +387,20 @@ export default function SettingsPage() {
                                 placeholder="es: idraulica-rossi"
                                 {...field}
                                 className="pl-10"
-                                disabled={isSavingCompany}
-                                onBlur={(e) => { 
+                                disabled={isSavingCompany || isUploadingLogo}
+                                onBlur={(e) => {
                                     const manualSlug = generateSlug(e.target.value);
-                                    if (e.target.value !== manualSlug) {
-                                        field.onChange(manualSlug); 
-                                        companyForm.trigger("slug"); 
+                                    if (e.target.value.trim() === "") { // Se l'utente cancella lo slug
+                                        field.onChange(""); // Mantieni vuoto, non rigenerare subito
+                                    } else if (e.target.value !== manualSlug) {
+                                        field.onChange(manualSlug);
+                                        companyForm.trigger("slug");
                                     }
-                                    setIsSlugManuallyEditedCompany(true); 
-                                    field.onBlur(); 
+                                    setIsSlugManuallyEditedCompany(true);
+                                    field.onBlur();
                                 }}
                                 onChange={(e) => {
-                                    field.onChange(e.target.value); 
+                                    field.onChange(e.target.value);
                                     if (!isSlugManuallyEditedCompany && e.target.value !== generateSlug(companyNameValue) ) {
                                         setIsSlugManuallyEditedCompany(true);
                                     }
@@ -346,7 +426,7 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Telefono</FormLabel>
                           <FormControl>
-                            <Input type="tel" {...field} disabled={isSavingCompany} />
+                            <Input type="tel" {...field} disabled={isSavingCompany || isUploadingLogo} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -359,14 +439,14 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Indirizzo Completo</FormLabel>
                           <FormControl>
-                            <Input {...field} disabled={isSavingCompany} placeholder="Via Roma 1, 20121 Milano MI"/>
+                            <Input {...field} disabled={isSavingCompany || isUploadingLogo} placeholder="Via Roma 1, 20121 Milano MI"/>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                   </div>
-                  <Button type="submit" disabled={isSavingCompany} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                  <Button type="submit" disabled={isSavingCompany || isUploadingLogo} className="bg-accent hover:bg-accent/90 text-accent-foreground">
                     {isSavingCompany && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Salva Modifiche Azienda
                   </Button>
@@ -412,7 +492,7 @@ export default function SettingsPage() {
                   </div>
                   <div>
                     <Label htmlFor="userRole">Ruolo</Label>
-                    <Input id="userRole" value={"Amministratore"} disabled /> 
+                    <Input id="userRole" value={"Amministratore"} disabled />
                   </div>
                   <Button type="submit" disabled={isSavingProfile} className="bg-accent hover:bg-accent/90 text-accent-foreground">
                      {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
