@@ -71,7 +71,11 @@ export default function LandingPage() {
       <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto flex h-16 max-w-screen-lg items-center justify-between px-4">
           <Logo />
-          <Button asChild variant="outline" className="border-accent text-accent hover:bg-accent hover:text-accent-foreground">
+          <Button 
+            asChild 
+            variant="outline" 
+            className="border-primary text-primary hover:bg-primary hover:text-primary-foreground hover:shadow-md py-2.5 px-5"
+          >
             <Link href="/register">Registrati</Link>
           </Button>
         </div>
