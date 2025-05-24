@@ -107,7 +107,7 @@ export default function LandingPage() {
             <h2 className="mb-10 text-center text-3xl font-bold text-primary">
               Perché Scegliere Incastro?
             </h2>
-            <div className="grid gap-8 md:grid-cols-3">
+            <div className="grid gap-8 md:grid-cols-3"> {/* Modificata questa riga */}
               <div className="rounded-lg border bg-card p-6 shadow-sm">
                 <Zap className="mb-4 h-10 w-10 text-accent" />
                 <h3 className="mb-2 text-xl font-semibold">Efficienza Operativa</h3>
