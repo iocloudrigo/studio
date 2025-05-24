@@ -4,7 +4,7 @@ import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Image from "next/image";
-import { CheckCircle, Users, Zap, Target, UserPlus, Link2, ListChecks, CalendarCog, HelpCircle, ChevronRight } from "lucide-react";
+import { CheckCircle, Users, Zap, Target, UserPlus, Link2, ListChecks, CalendarCog, HelpCircle, ChevronRight, Euro, Star, ShieldCheck } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -40,6 +40,40 @@ export default function LandingPage() {
       answer: "Sì, puoi utilizzare servizi esterni di short-link come Bit.ly per accorciare e personalizzare il link generato da Incastro. Inoltre, puoi trasformare il link in un QR Code da stampare o condividere digitalmente per un accesso ancora più rapido da parte dei tuoi clienti."
     }
   ];
+
+  const pricingPlans = [
+    {
+      name: "Starter",
+      price: "€ 299",
+      frequency: "/ anno",
+      description: "Ideale per iniziare e per piccole attività.",
+      features: ["Fino a 20 clienti", "Gestione richieste base", "Supporto email"],
+      cta: "Inizia con Starter",
+      href: "/register",
+      highlight: false,
+    },
+    {
+      name: "Pro",
+      price: "€ 399",
+      frequency: "/ anno",
+      description: "Perfetto per aziende in crescita.",
+      features: ["Fino a 50 clienti", "Gestione richieste avanzata", "Suggerimenti AI", "Supporto prioritario"],
+      cta: "Scegli Pro",
+      href: "/register",
+      highlight: true,
+    },
+    {
+      name: "Elite",
+      price: "€ 499",
+      frequency: "/ anno",
+      description: "La soluzione completa per grandi volumi.",
+      features: ["Clienti illimitati", "Tutte le funzionalità Pro", "Statistiche avanzate", "Supporto dedicato"],
+      cta: "Passa a Elite",
+      href: "/register",
+      highlight: false,
+    },
+  ];
+
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -238,6 +272,59 @@ export default function LandingPage() {
                 </AccordionItem>
               ))}
             </Accordion>
+          </div>
+        </section>
+
+        {/* Pricing Section */}
+        <section className="py-12 md:py-20 bg-muted/50">
+          <div className="container mx-auto max-w-screen-lg px-4">
+            <div className="mb-12 text-center">
+              <Euro className="mx-auto h-12 w-12 text-primary mb-4" />
+              <h2 className="text-3xl font-bold text-primary">
+                Piani Tariffari Semplici e Trasparenti
+              </h2>
+              <p className="mt-2 text-muted-foreground">
+                Scegli il piano annuale più adatto alle esigenze della tua attività.
+              </p>
+            </div>
+            <div className="grid gap-8 md:grid-cols-3 lg:gap-10">
+              {pricingPlans.map((plan) => (
+                <div
+                  key={plan.name}
+                  className={`rounded-lg border bg-card p-6 shadow-lg flex flex-col ${
+                    plan.highlight ? "border-primary ring-2 ring-primary" : "border-border"
+                  }`}
+                >
+                  {plan.highlight && (
+                    <div className="mb-4 text-center">
+                      <span className="inline-block rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground">
+                        Più Popolare
+                      </span>
+                    </div>
+                  )}
+                  <h3 className="mb-2 text-2xl font-bold text-center text-primary">{plan.name}</h3>
+                  <p className="mb-4 text-center text-muted-foreground">{plan.description}</p>
+                  <div className="mb-6 text-center">
+                    <span className="text-4xl font-extrabold text-foreground">{plan.price}</span>
+                    <span className="text-lg text-muted-foreground">{plan.frequency}</span>
+                  </div>
+                  <ul className="mb-8 space-y-2 text-muted-foreground flex-grow">
+                    {plan.features.map((feature, index) => (
+                      <li key={index} className="flex items-center">
+                        <CheckCircle className="mr-2 h-5 w-5 text-green-500" />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+                  <Button asChild className={`w-full mt-auto ${plan.highlight ? 'bg-primary hover:bg-primary/90 text-primary-foreground' : 'bg-accent hover:bg-accent/90 text-accent-foreground'}`}>
+                    <Link href={plan.href}>{plan.cta}</Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="mt-8 text-center text-sm text-muted-foreground">
+              Tutti i prezzi sono IVA esclusa.
+            </p>
           </div>
         </section>
 
