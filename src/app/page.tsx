@@ -107,7 +107,7 @@ export default function LandingPage() {
                 Incastro è la soluzione pensata per artigiani, piccole e medie imprese che gestiscono interventi tecnici sul campo. Semplifica la ricezione delle richieste, la pianificazione degli appuntamenti, l'assegnazione dei tecnici e la comunicazione con i clienti.
               </p>
               <p className="text-muted-foreground">
-                Grazie a un'interfaccia intuitiva e a potenti strumenti, inclusa l'assistenza AI per i suggerimenti, Incastro ti aiuta a risparmiare tempo, ridurre gli errori e migliorare la soddisfazione del cliente.
+                Con Incastro risparmi ore ogni settimana, riduci errori manuali e lasci che l’AI faccia il lavoro sporco per te.
               </p>
             </div>
             <div className="order-1 md:order-2">
