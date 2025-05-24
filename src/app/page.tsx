@@ -94,7 +94,7 @@ export default function LandingPage() {
                 </li>
                 <li className="flex items-center">
                   <Target className="mr-2 h-5 w-5 text-accent" />
-                  Qualsiasi professionista che gestisca appuntamenti e interventi esterni.
+                  Freelancer per appuntamenti e interventi.
                 </li>
               </ul>
             </div>
