@@ -25,7 +25,7 @@ export default function LandingPage() {
         <section className="py-12 md:py-20 bg-gradient-to-b from-background to-muted/50">
           <div className="container mx-auto max-w-screen-lg px-4 text-center">
             <h1 className="mb-6 text-4xl font-bold tracking-tight text-primary md:text-5xl lg:text-6xl">
-              Benvenuto in Incastro
+              Benvenuto su Incastro
             </h1>
             <p className="mb-10 text-lg text-muted-foreground md:text-xl">
               La piattaforma per ottimizzare la gestione dei tuoi interventi tecnici.
