@@ -5,33 +5,32 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity, CalendarDays } from "lucide-react"; // Aggiunto CalendarDays
-import { Skeleton } from "@/components/ui/skeleton"; 
-import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet"; // Importa RequestSheetData
+import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity, CalendarDays } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet";
 import { useToast } from "@/hooks/use-toast";
-import { ScrollArea } from "@/components/ui/scroll-area"; 
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getCountFromServer, getDocs, orderBy, limit, Timestamp, doc, updateDoc } from "firebase/firestore";
 
 interface DashboardStats {
-  activeRequests: number | null; 
-  assignedRequests: number | null; 
+  activeRequests: number | null;
+  assignedRequests: number | null;
   inProgressRequests: number | null;
 }
 
-// Interfaccia per le richieste recenti, assicurati che includa tutti i campi per RequestSheetData
 export interface RecentRequest {
   id: string;
-  customer: string; 
-  service: string;  
-  status: string;   
-  created_at?: Timestamp; 
+  customer: string;
+  service: string;
+  status: string;
+  created_at?: Timestamp;
   note_aggiuntive?: string;
   indirizzo_intervento?: string;
   telefono_cliente?: string;
-  email_cliente?: string; // Aggiunto
+  email_cliente?: string;
   giorno_preferito?: string;
   fascia_oraria?: string;
 }
@@ -43,26 +42,26 @@ export default function DashboardPage() {
 
   const [stats, setStats] = useState<DashboardStats>({
     activeRequests: null,
-    assignedRequests: null, 
+    assignedRequests: null,
     inProgressRequests: null,
   });
   const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([]);
-  
+
   const [loadingStats, setLoadingStats] = useState({
     activeRequests: true,
-    assignedRequests: true, 
+    assignedRequests: true,
     inProgressRequests: true,
   });
   const [loadingRequests, setLoadingRequests] = useState(true);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<RequestSheetData | null>(null); // Usa RequestSheetData
+  const [selectedRequest, setSelectedRequest] = useState<RequestSheetData | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
-        setCompanyId(user.uid); 
+        setCompanyId(user.uid);
       } else {
         setCurrentUser(null);
         setCompanyId(null);
@@ -104,30 +103,30 @@ export default function DashboardPage() {
       }
 
       // Fetch Assigned Requests
-      setLoadingStats(prev => ({ ...prev, assignedRequests: true })); 
+      setLoadingStats(prev => ({ ...prev, assignedRequests: true }));
       try {
-        const assignedRequestsQuery = query( 
-          collection(db, "richieste_clienti"), 
+        const assignedRequestsQuery = query(
+          collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "==", "assegnata") 
+          where("stato", "==", "assegnata")
         );
-        const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery); 
-        setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count })); 
+        const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
+        setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
       } catch (error) {
-        console.error("Error fetching assigned requests stats:", error); 
-        toast({ title: "Errore Richieste Assegnate", description: "Impossibile caricare il conteggio delle richieste assegnate.", variant: "destructive" }); 
-        setStats(prev => ({ ...prev, assignedRequests: 0 })); 
+        console.error("Error fetching assigned requests stats:", error);
+        toast({ title: "Errore Richieste Assegnate", description: "Impossibile caricare il conteggio delle richieste assegnate.", variant: "destructive" });
+        setStats(prev => ({ ...prev, assignedRequests: 0 }));
       } finally {
-        setLoadingStats(prev => ({ ...prev, assignedRequests: false })); 
+        setLoadingStats(prev => ({ ...prev, assignedRequests: false }));
       }
-      
+
       // Fetch In Progress Requests
       setLoadingStats(prev => ({ ...prev, inProgressRequests: true }));
       try {
         const inProgressRequestsQuery = query(
-          collection(db, "richieste_clienti"), 
+          collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "==", "in corso") 
+          where("stato", "==", "in corso")
         );
         const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
         setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
@@ -145,31 +144,31 @@ export default function DashboardPage() {
         const requestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          orderBy("created_at", "desc"), 
-          limit(10) 
+          orderBy("created_at", "desc"),
+          limit(10)
         );
         const requestsSnapshot = await getDocs(requestsQuery);
         const fetchedRequests = requestsSnapshot.docs.map(doc => {
           const data = doc.data();
           return {
             id: doc.id,
-            customer: data.nome_cliente || "N/D", 
-            service: data.tipo_servizio || "N/D", 
-            status: data.stato || "N/D", 
+            customer: data.nome_cliente || "N/D",
+            service: data.tipo_servizio || "N/D",
+            status: data.stato || "N/D",
             created_at: data.created_at as Timestamp | undefined,
             note_aggiuntive: data.note_aggiuntive || "",
             indirizzo_intervento: data.indirizzo_intervento || "",
             telefono_cliente: data.telefono_cliente || "",
-            email_cliente: data.email_cliente || "", // Aggiunto
+            email_cliente: data.email_cliente || "",
             giorno_preferito: data.giorno_preferito || "",
             fascia_oraria: data.fascia_oraria || "",
-          } as RecentRequest; // Cast a RecentRequest
+          } as RecentRequest;
         });
         setRecentRequests(fetchedRequests);
       } catch (error) {
         console.error("Error fetching recent requests:", error);
         toast({ title: "Errore Richieste Recenti", description: "Impossibile caricare le richieste recenti.", variant: "destructive" });
-        setRecentRequests([]); 
+        setRecentRequests([]);
       } finally {
         setLoadingRequests(false);
       }
@@ -193,45 +192,45 @@ export default function DashboardPage() {
           req.id === requestId ? { ...req, status: newStatus } : req
         )
       );
-      
+
       if (companyId) {
         setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true }));
         try {
-            const activeRequestsQuery = query(
-              collection(db, "richieste_clienti"),
-              where("id_azienda", "==", companyId),
-              where("stato", "not-in", ["completata", "annullata"]) 
-            );
-            const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
-            setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
+          const activeRequestsQuery = query(
+            collection(db, "richieste_clienti"),
+            where("id_azienda", "==", companyId),
+            where("stato", "not-in", ["completata", "annullata"])
+          );
+          const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
+          setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
 
-            const assignedRequestsQuery = query( 
-                collection(db, "richieste_clienti"),
-                where("id_azienda", "==", companyId),
-                where("stato", "==", "assegnata")
-            );
-            const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
-            setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
+          const assignedRequestsQuery = query(
+            collection(db, "richieste_clienti"),
+            where("id_azienda", "==", companyId),
+            where("stato", "==", "assegnata")
+          );
+          const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
+          setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
 
-            const inProgressRequestsQuery = query( 
-                collection(db, "richieste_clienti"),
-                where("id_azienda", "==", companyId),
-                where("stato", "==", "in corso")
-            );
-            const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
-            setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
+          const inProgressRequestsQuery = query(
+            collection(db, "richieste_clienti"),
+            where("id_azienda", "==", companyId),
+            where("stato", "==", "in corso")
+          );
+          const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
+          setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
 
         } catch (error) {
-            console.error("Error refetching stats after update:", error);
+          console.error("Error refetching stats after update:", error);
         } finally {
-            setLoadingStats(prev => ({ ...prev, activeRequests: false, assignedRequests: false, inProgressRequests: false }));
+          setLoadingStats(prev => ({ ...prev, activeRequests: false, assignedRequests: false, inProgressRequests: false }));
         }
       }
 
     } catch (error) {
       console.error("Error updating request status:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare lo stato della richiesta.", variant: "destructive" });
-      throw error; 
+      throw error;
     }
   };
 
@@ -251,48 +250,54 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Richieste Attive</CardTitle>
-            <FileText className="h-5 w-5 text-primary" />
-          </CardHeader>
-          <CardContent>
-            {loadingStats.activeRequests ? (
-              <Skeleton className="h-7 w-1/4" />
-            ) : (
-              <div className="text-2xl font-bold">{stats.activeRequests ?? 0}</div>
-            )}
-            <p className="text-xs text-muted-foreground">Richieste non completate o annullate</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Richieste Assegnate</CardTitle> 
-            <ClipboardCheck className="h-5 w-5 text-primary" /> 
-          </CardHeader>
-          <CardContent>
-            {loadingStats.assignedRequests ? ( 
-              <Skeleton className="h-7 w-1/4" />
-            ) : (
-              <div className="text-2xl font-bold">{stats.assignedRequests ?? 0}</div> 
-            )}
-            <p className="text-xs text-muted-foreground">Richieste con tecnico assegnato</p> 
-          </CardContent>
-        </Card>
-        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Richieste In Corso</CardTitle>
-            <Activity className="h-5 w-5 text-primary" />
-          </CardHeader>
-          <CardContent>
-            {loadingStats.inProgressRequests ? (
-              <Skeleton className="h-7 w-1/4" />
-            ) : (
-              <div className="text-2xl font-bold">{stats.inProgressRequests ?? 0}</div>
-            )}
-            <p className="text-xs text-muted-foreground">Richieste attualmente in lavorazione</p>
-          </CardContent>
-        </Card>
+        <Link href={`/dashboard/requests?statusFilter=${encodeURIComponent("in attesa")},${encodeURIComponent("assegnata")},${encodeURIComponent("programmata")},${encodeURIComponent("in corso")}`}>
+          <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Richieste Attive</CardTitle>
+              <FileText className="h-5 w-5 text-primary" />
+            </CardHeader>
+            <CardContent>
+              {loadingStats.activeRequests ? (
+                <Skeleton className="h-7 w-1/4" />
+              ) : (
+                <div className="text-2xl font-bold">{stats.activeRequests ?? 0}</div>
+              )}
+              <p className="text-xs text-muted-foreground">Richieste non completate o annullate</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href={`/dashboard/requests?statusFilter=${encodeURIComponent("assegnata")}`}>
+          <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Richieste Assegnate</CardTitle>
+              <ClipboardCheck className="h-5 w-5 text-primary" />
+            </CardHeader>
+            <CardContent>
+              {loadingStats.assignedRequests ? (
+                <Skeleton className="h-7 w-1/4" />
+              ) : (
+                <div className="text-2xl font-bold">{stats.assignedRequests ?? 0}</div>
+              )}
+              <p className="text-xs text-muted-foreground">Richieste con tecnico assegnato</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href={`/dashboard/requests?statusFilter=${encodeURIComponent("in corso")}`}>
+          <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Richieste In Corso</CardTitle>
+              <Activity className="h-5 w-5 text-primary" />
+            </CardHeader>
+            <CardContent>
+              {loadingStats.inProgressRequests ? (
+                <Skeleton className="h-7 w-1/4" />
+              ) : (
+                <div className="text-2xl font-bold">{stats.inProgressRequests ?? 0}</div>
+              )}
+              <p className="text-xs text-muted-foreground">Richieste attualmente in lavorazione</p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <Card className="shadow-lg">
@@ -330,21 +335,20 @@ export default function DashboardPage() {
                           <span className={`px-2 py-1 text-xs rounded-full capitalize ${
                             req.status === "completata" ? "bg-green-100 text-green-700" :
                             req.status === "assegnata" ? "bg-blue-100 text-blue-700" :
-                            req.status === "in attesa" || req.status === "In Attesa" ? "bg-orange-100 text-orange-700" : 
+                            req.status === "in attesa" ? "bg-orange-100 text-orange-700" :
                             req.status === "programmata" ? "bg-yellow-100 text-yellow-700" :
                             req.status === "in corso" ? "bg-indigo-100 text-indigo-700" :
                             req.status === "annullata" ? "bg-red-100 text-red-700" :
-                            "bg-gray-100 text-gray-700" 
+                            "bg-gray-100 text-gray-700"
                           }`}>
                             {req.status.replace("_", " ")}
                           </span>
                         </td>
                         <td className="p-3 text-right text-sm">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => {
-                              // Mappa RecentRequest a RequestSheetData
                               const sheetData: RequestSheetData = {
                                 id: req.id,
                                 customer: req.customer,
@@ -354,7 +358,7 @@ export default function DashboardPage() {
                                 note_aggiuntive: req.note_aggiuntive,
                                 indirizzo_intervento: req.indirizzo_intervento,
                                 telefono_cliente: req.telefono_cliente,
-                                email_cliente: req.email_cliente, // Aggiunto
+                                email_cliente: req.email_cliente,
                                 giorno_preferito: req.giorno_preferito,
                                 fascia_oraria: req.fascia_oraria,
                               };
@@ -386,7 +390,7 @@ export default function DashboardPage() {
             <CardTitle>Prossimi Appuntamenti</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-            <CalendarDays className="h-12 w-12 mb-2" /> 
+            <CalendarDays className="h-12 w-12 mb-2" />
             <p>Nessun appuntamento imminente.</p>
             <Button variant="link" asChild className="mt-2 text-accent"><Link href="/dashboard/appointments">Vedi tutti</Link></Button>
           </CardContent>
@@ -408,7 +412,7 @@ export default function DashboardPage() {
         <RequestDetailsSheet
           isOpen={isSheetOpen}
           onOpenChange={setIsSheetOpen}
-          request={selectedRequest} // selectedRequest è già di tipo RequestSheetData
+          request={selectedRequest}
           onUpdateRequestStatus={handleUpdateRequestStatus}
         />
       )}

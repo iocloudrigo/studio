@@ -17,15 +17,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet"; // Importa RequestSheetData
+import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet";
 import { useToast } from "@/hooks/use-toast";
+import { useSearchParams } from "next/navigation"; // Import useSearchParams
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc } from "firebase/firestore";
 import { format } from 'date-fns';
 
-// Interfaccia per le richieste, assicurati che includa tutti i campi per RequestSheetData
 export interface ClientRequest {
   id: string;
   id_azienda: string;
@@ -35,7 +35,7 @@ export interface ClientRequest {
   created_at: Timestamp;
   indirizzo_intervento?: string;
   telefono_cliente?: string;
-  email_cliente?: string; // Aggiunto
+  email_cliente?: string;
   giorno_preferito?: string;
   fascia_oraria?: string;
   note_aggiuntive?: string;
@@ -43,11 +43,11 @@ export interface ClientRequest {
 
 const ALL_STATUSES = ["in attesa", "assegnata", "programmata", "in corso", "completata", "annullata"];
 
-
 export default function AllRequestsPage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const { toast } = useToast();
+  const searchParams = useSearchParams(); // Get searchParams
 
   const [allRequests, setAllRequests] = useState<ClientRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,7 +55,7 @@ export default function AllRequestsPage() {
   const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [selectedRequestForSheet, setSelectedRequestForSheet] = useState<RequestSheetData | null>(null); // Usa RequestSheetData
+  const [selectedRequestForSheet, setSelectedRequestForSheet] = useState<RequestSheetData | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -70,6 +70,19 @@ export default function AllRequestsPage() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const statusFilterFromUrl = searchParams.get('statusFilter');
+    if (statusFilterFromUrl) {
+      const statuses = statusFilterFromUrl.split(',').map(s => decodeURIComponent(s.trim()));
+      // Ensure statuses are valid before setting
+      const validStatuses = statuses.filter(s => ALL_STATUSES.includes(s));
+      if (validStatuses.length > 0) {
+        setActiveStatusFilters(validStatuses);
+      }
+    }
+  }, [searchParams]);
+
 
   useEffect(() => {
     if (!companyId) {
@@ -87,10 +100,10 @@ export default function AllRequestsPage() {
           orderBy("created_at", "desc")
         );
         const querySnapshot = await getDocs(requestsQuery);
-        const fetchedRequests = querySnapshot.docs.map(docSnap => { // Rinominato doc a docSnap per evitare conflitto
+        const fetchedRequests = querySnapshot.docs.map(docSnap => {
           const data = docSnap.data();
           return {
-            id: docSnap.id, // Usa docSnap.id
+            id: docSnap.id,
             id_azienda: data.id_azienda,
             nome_cliente: data.nome_cliente || "N/D",
             tipo_servizio: data.tipo_servizio || "N/D",
@@ -98,7 +111,7 @@ export default function AllRequestsPage() {
             created_at: data.created_at as Timestamp,
             indirizzo_intervento: data.indirizzo_intervento,
             telefono_cliente: data.telefono_cliente,
-            email_cliente: data.email_cliente, // Aggiunto
+            email_cliente: data.email_cliente,
             giorno_preferito: data.giorno_preferito,
             fascia_oraria: data.fascia_oraria,
             note_aggiuntive: data.note_aggiuntive,
@@ -128,39 +141,38 @@ export default function AllRequestsPage() {
         req.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
         req.nome_cliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
         req.tipo_servizio.toLowerCase().includes(searchTerm.toLowerCase());
-      
+
       const matchesStatus = activeStatusFilters.length === 0 || activeStatusFilters.includes(req.stato);
-      
+
       return matchesSearch && matchesStatus;
     });
   }, [allRequests, searchTerm, activeStatusFilters]);
 
   const handleOpenDetailsSheet = (request: ClientRequest) => {
-    // Mappa ClientRequest a RequestSheetData
     const sheetData: RequestSheetData = {
-        id: request.id,
-        customer: request.nome_cliente,
-        service: request.tipo_servizio,
-        status: request.stato,
-        created_at: request.created_at,
-        indirizzo_intervento: request.indirizzo_intervento,
-        telefono_cliente: request.telefono_cliente,
-        email_cliente: request.email_cliente, // Aggiunto
-        giorno_preferito: request.giorno_preferito,
-        fascia_oraria: request.fascia_oraria,
-        note_aggiuntive: request.note_aggiuntive,
+      id: request.id,
+      customer: request.nome_cliente,
+      service: request.tipo_servizio,
+      status: request.stato,
+      created_at: request.created_at,
+      indirizzo_intervento: request.indirizzo_intervento,
+      telefono_cliente: request.telefono_cliente,
+      email_cliente: request.email_cliente,
+      giorno_preferito: request.giorno_preferito,
+      fascia_oraria: request.fascia_oraria,
+      note_aggiuntive: request.note_aggiuntive,
     };
     setSelectedRequestForSheet(sheetData);
     setIsSheetOpen(true);
   };
-  
+
   const handleUpdateRequestStatusOnPage = async (requestId: string, newStatus: string) => {
     if (!companyId) return;
     try {
-      const requestDocRef = doc(db, "richieste_clienti", requestId); // Usa db importato
+      const requestDocRef = doc(db, "richieste_clienti", requestId);
       await updateDoc(requestDocRef, { stato: newStatus });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
-      
+
       setAllRequests(prevRequests =>
         prevRequests.map(req =>
           req.id === requestId ? { ...req, stato: newStatus } : req
@@ -196,13 +208,13 @@ export default function AllRequestsPage() {
         <CardHeader>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex-1 relative">
-               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-               <Input 
-                 placeholder="Cerca per ID, cliente, servizio..." 
-                 className="pl-10 w-full md:w-auto" 
-                 value={searchTerm}
-                 onChange={(e) => setSearchTerm(e.target.value)}
-               />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Cerca per ID, cliente, servizio..."
+                className="pl-10 w-full md:w-auto"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -223,12 +235,12 @@ export default function AllRequestsPage() {
                     {status.replace("_", " ")}
                   </DropdownMenuCheckboxItem>
                 ))}
-                 {activeStatusFilters.length > 0 && (
+                {activeStatusFilters.length > 0 && (
                   <>
                     <DropdownMenuSeparator />
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className="w-full justify-start text-sm text-destructive hover:text-destructive"
                       onClick={() => setActiveStatusFilters([])}
                     >
@@ -268,7 +280,7 @@ export default function AllRequestsPage() {
                               req.stato === "completata" ? "default" :
                               req.stato === "annullata" ? "destructive" :
                               req.stato === "in attesa" ? "outline" :
-                              "secondary" 
+                              "secondary"
                             }
                             className={
                               req.stato === "completata" ? "bg-green-100 text-green-700 border-green-200" :
@@ -304,12 +316,12 @@ export default function AllRequestsPage() {
           )}
         </CardContent>
       </Card>
-      
+
       {selectedRequestForSheet && (
         <RequestDetailsSheet
           isOpen={isSheetOpen}
           onOpenChange={setIsSheetOpen}
-          request={selectedRequestForSheet} // selectedRequestForSheet è già di tipo RequestSheetData
+          request={selectedRequestForSheet}
           onUpdateRequestStatus={handleUpdateRequestStatusOnPage}
         />
       )}
