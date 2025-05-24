@@ -24,7 +24,7 @@ export interface Cliente {
   note_interne?: string;
   data_creazione: Timestamp;
   creato_automaticamente?: boolean;
-  richiesteAttive?: number; // NUOVO CAMPO
+  richiesteAttive?: number;
 }
 
 export default function ClientsPage() {
@@ -80,11 +80,10 @@ export default function ClientsPage() {
           note_interne: data.note_interne,
           data_creazione: data.data_creazione as Timestamp,
           creato_automaticamente: data.creato_automaticamente === true,
-          richiesteAttive: 0, // Default
+          richiesteAttive: 0, 
         };
 
-        // Conteggio richieste attive per questo cliente
-        if (clienteBase.email) { // Assumiamo che il collegamento avvenga tramite email
+        if (clienteBase.email) { 
           const activeRequestsQuery = query(
             collection(db, "richieste_clienti"),
             where("id_azienda", "==", currentCompanyId),
@@ -162,6 +161,8 @@ export default function ClientsPage() {
     }
   };
 
+  const activeStatusesQueryParam = encodeURIComponent("in attesa,assegnata,programmata,in corso");
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -232,12 +233,19 @@ export default function ClientsPage() {
                           )}
                         </td>
                         <td className="p-3 text-sm whitespace-nowrap text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <Briefcase className={`h-4 w-4 ${client.richiesteAttive && client.richiesteAttive > 0 ? 'text-primary' : 'text-muted-foreground'}`} />
-                            <span className={`${client.richiesteAttive && client.richiesteAttive > 0 ? 'font-semibold text-primary' : 'text-muted-foreground'}`}>
-                                {client.richiesteAttive ?? 0}
-                            </span>
-                          </div>
+                          {client.richiesteAttive && client.richiesteAttive > 0 && client.email ? (
+                            <Link href={`/dashboard/requests?statusFilter=${activeStatusesQueryParam}&searchTerm=${encodeURIComponent(client.email)}`} 
+                                  className="flex items-center justify-center gap-1 text-primary hover:underline"
+                                  title="Visualizza richieste attive">
+                              <Briefcase className="h-4 w-4" />
+                              <span className="font-semibold">{client.richiesteAttive}</span>
+                            </Link>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1">
+                                <Briefcase className={`h-4 w-4 text-muted-foreground`} />
+                                <span className="text-muted-foreground">{client.richiesteAttive ?? 0}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="p-3 text-right text-sm whitespace-nowrap">
                           <Button variant="outline" size="sm" onClick={() => handleOpenDetailsSheet(client)}>

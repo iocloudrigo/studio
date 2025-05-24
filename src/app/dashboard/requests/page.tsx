@@ -26,9 +26,9 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc } from "firebase/firestore";
 import { format } from 'date-fns';
 
-export interface ClientRequest extends RequestSheetData { // Estende RequestSheetData
-  id_azienda: string; // Aggiunto questo campo che era mancante nella definizione ma usato
-  // Altri campi sono ereditati da RequestSheetData
+export interface ClientRequest extends RequestSheetData { 
+  id_azienda: string; 
+  email_cliente?: string; // Aggiunto per il filtro searchTerm
 }
 
 const ALL_STATUSES = ["in attesa", "assegnata", "programmata", "in corso", "completata", "annullata"];
@@ -63,16 +63,24 @@ export default function AllRequestsPage() {
 
   useEffect(() => {
     const statusFilterFromUrl = searchParams.get('statusFilter');
+    const searchTermFromUrl = searchParams.get('searchTerm');
+
     if (statusFilterFromUrl) {
       const statuses = statusFilterFromUrl.split(',').map(s => decodeURIComponent(s.trim()));
       const validStatuses = statuses.filter(s => ALL_STATUSES.includes(s));
       if (validStatuses.length > 0) {
         setActiveStatusFilters(validStatuses);
       } else {
-        setActiveStatusFilters([]); // Reset se i filtri URL non sono validi
+        setActiveStatusFilters([]); 
       }
     } else {
-        setActiveStatusFilters([]); // Nessun filtro URL, resetta
+        setActiveStatusFilters([]); 
+    }
+
+    if (searchTermFromUrl) {
+      setSearchTerm(decodeURIComponent(searchTermFromUrl));
+    } else {
+      setSearchTerm("");
     }
   }, [searchParams]);
 
@@ -98,9 +106,9 @@ export default function AllRequestsPage() {
           return {
             id: docSnap.id,
             id_azienda: data.id_azienda,
-            customer: data.nome_cliente || "N/D", // nome_cliente invece di customer
-            service: data.tipo_servizio || "N/D", // tipo_servizio invece di service
-            status: data.stato || "N/D", // stato invece di status
+            customer: data.nome_cliente || "N/D", 
+            service: data.tipo_servizio || "N/D", 
+            status: data.stato || "N/D", 
             created_at: data.created_at as Timestamp,
             indirizzo_intervento: data.indirizzo_intervento,
             telefono_cliente: data.telefono_cliente,
@@ -132,20 +140,21 @@ export default function AllRequestsPage() {
   };
 
   const filteredRequests = useMemo(() => {
+    const searchTermLower = searchTerm.toLowerCase();
     return allRequests.filter(req => {
-      const matchesSearch = searchTerm === "" ||
-        req.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.customer.toLowerCase().includes(searchTerm.toLowerCase()) || // usa req.customer
-        req.service.toLowerCase().includes(searchTerm.toLowerCase()); // usa req.service
+      const matchesSearch = searchTermLower === "" ||
+        req.id.toLowerCase().includes(searchTermLower) ||
+        req.customer.toLowerCase().includes(searchTermLower) || 
+        (req.email_cliente && req.email_cliente.toLowerCase().includes(searchTermLower)) || // Cerca anche per email cliente
+        req.service.toLowerCase().includes(searchTermLower); 
 
-      const matchesStatus = activeStatusFilters.length === 0 || activeStatusFilters.includes(req.status); // usa req.status
+      const matchesStatus = activeStatusFilters.length === 0 || activeStatusFilters.includes(req.status); 
 
       return matchesSearch && matchesStatus;
     });
   }, [allRequests, searchTerm, activeStatusFilters]);
 
   const handleOpenDetailsSheet = (request: ClientRequest) => {
-    // request è già del tipo corretto (ClientRequest) che estende RequestSheetData
     setSelectedRequestForSheet(request);
     setIsSheetOpen(true);
   };
@@ -195,7 +204,7 @@ export default function AllRequestsPage() {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Cerca per ID, cliente, servizio..."
+                placeholder="Cerca per ID, cliente, email, servizio..."
                 className="pl-10 w-full md:w-auto"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -313,5 +322,3 @@ export default function AllRequestsPage() {
     </div>
   );
 }
-
-    
