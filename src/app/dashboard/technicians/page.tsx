@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Users, PlusCircle, Search, Edit, Trash2, Loader2, MapPin } from "lucide-react";
+import { Users, PlusCircle, Search, Edit, Trash2, Loader2, MapPin, Briefcase } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, deleteDoc, getCountFromServer } from "firebase/firestore";
 import { TechnicianDetailsSheet, type TechnicianFormValues as TechnicianSheetFormValues } from "@/components/dashboard/technicians/TechnicianDetailsSheet"; 
 
 export interface Technician {
@@ -26,7 +26,12 @@ export interface Technician {
   competenze?: string[];
   stato: string;
   data_creazione: Timestamp;
+  richiesteAttive?: number; // Nuovo campo
 }
+
+const STATI_TECNICO_ATTIVI_PER_CONTEGGIO = ["Disponibile", "Occupato"];
+const STATI_RICHIESTA_ATTIVI = ["assegnata", "programmata", "in corso"];
+
 
 export default function TechniciansPage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
@@ -68,14 +73,39 @@ export default function TechniciansPage() {
         orderBy("data_creazione", "desc")
       );
       const querySnapshot = await getDocs(techniciansQuery);
-      const fetchedTechnicians = querySnapshot.docs.map(docSnap => ({
+      const fetchedTechniciansBase = querySnapshot.docs.map(docSnap => ({
         id: docSnap.id,
         ...docSnap.data(),
       } as Technician));
-      setTechnicians(fetchedTechnicians);
+
+      // Ora, per ogni tecnico idoneo, carica il conteggio delle richieste attive
+      const techniciansWithActiveRequests = await Promise.all(
+        fetchedTechniciansBase.map(async (tech) => {
+          if (STATI_TECNICO_ATTIVI_PER_CONTEGGIO.includes(tech.stato)) {
+            const requestsQuery = query(
+              collection(db, "richieste_clienti"),
+              where("id_azienda", "==", currentCompanyId),
+              where("assegnato_a_tecnico_id", "==", tech.id), // Assicurati che questo campo esista!
+              where("stato", "in", STATI_RICHIESTA_ATTIVI)
+            );
+            try {
+              const countSnapshot = await getCountFromServer(requestsQuery);
+              tech.richiesteAttive = countSnapshot.data().count;
+            } catch (countError) {
+              console.error(`Errore nel conteggio richieste per tecnico ${tech.id}:`, countError);
+              tech.richiesteAttive = 0; // O undefined, o gestisci l'errore diversamente
+            }
+          } else {
+            tech.richiesteAttive = 0; // O undefined
+          }
+          return tech;
+        })
+      );
+      setTechnicians(techniciansWithActiveRequests);
+
     } catch (error) {
       console.error("Error fetching technicians:", error);
-      toast({ title: "Errore Caricamento Tecnici", description: "Impossibile caricare l'elenco dei tecnici.", variant: "destructive" });
+      toast({ title: "Errore Caricamento Tecnici", description: "Impossibile caricare l'elenco dei tecnici o le loro richieste attive.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -117,7 +147,7 @@ export default function TechniciansPage() {
         telefono: data.telefono || null,
       });
       toast({ title: "Successo!", description: "Tecnico aggiornato con successo." });
-      if (companyId) fetchTechnicians(companyId);
+      if (companyId) fetchTechnicians(companyId); // Ricarica i dati per aggiornare anche il conteggio richieste
     } catch (error) {
       console.error("Error updating technician:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare il tecnico.", variant: "destructive" });
@@ -193,7 +223,15 @@ export default function TechniciansPage() {
                 <div className="overflow-x-auto">
                 <table className="w-full">
                     <thead>
-                      <tr className="border-b"><th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Nome</th><th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Contatti</th><th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Città</th><th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Competenze</th><th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th><th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th></tr>
+                      <tr className="border-b">
+                          <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Nome</th>
+                          <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Contatti</th>
+                          <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Città</th>
+                          <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Competenze</th>
+                          <th className="p-3 text-center text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Rich. Attive</th>
+                          <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th>
+                          <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
+                      </tr>
                     </thead>
                     <tbody>
                     {filteredTechnicians.map((tech) => (
@@ -216,6 +254,18 @@ export default function TechniciansPage() {
                             <div className="flex flex-wrap gap-1">
                             {(tech.competenze && tech.competenze.length > 0) ? tech.competenze.map(skill => <Badge key={skill} variant="secondary">{skill}</Badge>) : <span className="text-muted-foreground">N/D</span>}
                             </div>
+                        </td>
+                        <td className="p-3 text-sm whitespace-nowrap text-center">
+                          {STATI_TECNICO_ATTIVI_PER_CONTEGGIO.includes(tech.stato) ? (
+                            <div className="flex items-center justify-center gap-1">
+                                <Briefcase className={`h-4 w-4 ${ (tech.richiesteAttive ?? 0) > 0 ? 'text-primary' : 'text-muted-foreground'}`} />
+                                <span className={`${ (tech.richiesteAttive ?? 0) > 0 ? 'font-semibold text-primary' : 'text-muted-foreground'}`}>
+                                  {tech.richiesteAttive ?? 0}
+                                </span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
                         </td>
                         <td className="p-3 text-sm whitespace-nowrap">
                             <Badge className={getStatusBadgeClass(tech.stato)}>
@@ -255,3 +305,6 @@ export default function TechniciansPage() {
     </div>
   );
 }
+
+
+    
