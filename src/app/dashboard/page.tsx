@@ -82,7 +82,7 @@ export default function DashboardPage() {
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "not-in", ["completata", "annullata"]) // This was the correct logic for active based on a later request
+          where("stato", "not-in", ["completata", "annullata"])
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
         setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
@@ -130,14 +130,15 @@ export default function DashboardPage() {
         setLoadingStats(prev => ({ ...prev, inProgressRequests: false }));
       }
 
-      // Fetch Recent Requests (Table) - TEMPORARILY REVERTED: No longer filtering out "completata" or "annullata" here.
+      // Fetch Recent Requests (Table) - Exclude "completata" and "annullata"
       setLoadingRequests(true);
       try {
         const requestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
+          where("stato", "not-in", ["completata", "annullata"]), // Exclude completed and cancelled
           orderBy("created_at", "desc"),
-          limit(10) // Keeps loading 10, UI will scroll.
+          limit(10)
         );
         const requestsSnapshot = await getDocs(requestsQuery);
         const fetchedRequests = requestsSnapshot.docs.map(doc => {
@@ -185,12 +186,16 @@ export default function DashboardPage() {
       await updateDoc(requestDocRef, { stato: newStatus, ...additionalData });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
-      // TEMPORARILY REVERTED: Original logic that just updates the item in the list.
-      setRecentRequests(prevRequests =>
-        prevRequests.map(req =>
-          req.id === requestId ? { ...req, status: newStatus, ...additionalData } : req
-        )
-      );
+      // Update recentRequests list: remove if new status is 'completata' or 'annullata', otherwise update
+      if (newStatus === "completata" || newStatus === "annullata") {
+        setRecentRequests(prevRequests => prevRequests.filter(req => req.id !== requestId));
+      } else {
+        setRecentRequests(prevRequests =>
+          prevRequests.map(req =>
+            req.id === requestId ? { ...req, status: newStatus, ...additionalData } : req
+          )
+        );
+      }
       
       // Refetch stats that might be affected
       if (companyId) {
@@ -321,7 +326,7 @@ export default function DashboardPage() {
               <Skeleton className="h-8 w-full" />
             </div>
           ) : recentRequests.length > 0 ? (
-            <ScrollArea className="h-[380px] w-full"> {/* Maintained height for ~7 items */}
+            <ScrollArea className="h-[380px] w-full">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -414,6 +419,4 @@ export default function DashboardPage() {
     </div>
   );
 }
-    
-
     

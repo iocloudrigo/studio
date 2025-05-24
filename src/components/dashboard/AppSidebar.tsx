@@ -74,8 +74,7 @@ const navItems = [
       { href: "/dashboard/requests", label: "Tutte le Richieste", icon: FileText },
       { href: "/dashboard/requests/new", label: "Nuova Richiesta", icon: MessageSquarePlus },
       { href: "/dashboard/requests/suggestions", label: "Suggerimenti AI", icon: Lightbulb },
-      // TEMPORARILY REVERTED: "annullata" removed from filter
-      { href: "/dashboard/requests?statusFilter=completata", label: "Archiviate", icon: Archive },
+      { href: "/dashboard/requests?statusFilter=completata,annullata", label: "Archiviate", icon: Archive },
     ]
   },
   { href: "/dashboard/appointments", label: "Appuntamenti", icon: CalendarDays },
