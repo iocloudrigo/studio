@@ -32,6 +32,7 @@ import {
   Archive,
   User as UserIcon,
   Loader2,
+  Contact, // Nuova icona per Clienti
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useState, useEffect, useCallback } from "react";
@@ -61,14 +62,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
-import type { Collaborator } from "@/app/dashboard/settings/page"; // Assumendo che il tipo sia esportato
-import { useActiveCollaborator } from '@/app/dashboard/layout'; // Importa il custom hook
-
-interface ActiveCollaboratorStorageData { // Rinomina l'interfaccia locale per evitare conflitti se ce ne sono
-  id: string;
-  nome_completo: string;
-  ruolo: string;
-}
+import type { Collaborator } from "@/app/dashboard/settings/page";
+import { useActiveCollaborator, type ActiveCollaboratorStorageData } from '@/app/dashboard/layout';
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -83,6 +78,7 @@ const navItems = [
     ]
   },
   { href: "/dashboard/appointments", label: "Appuntamenti", icon: CalendarDays },
+  { href: "/dashboard/clients", label: "Clienti", icon: Contact }, // Nuova voce Clienti
   { href: "/dashboard/technicians", label: "Tecnici", icon: Users },
   { href: "/dashboard/settings", label: "Impostazioni", icon: Settings },
 ];
@@ -98,15 +94,13 @@ export function AppSidebar() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  // Utilizza il context per activeCollaborator
-  const { activeCollaborator, setActiveCollaborator, isLoadingActiveCollaborator } = useActiveCollaborator(); 
-  const [isLoadingCollaboratorsState, setIsLoadingCollaboratorsState] = useState(true); // Stato di caricamento specifico per la lista
+  const { activeCollaborator, setActiveCollaborator, isLoadingActiveCollaborator } = useActiveCollaborator();
+  const [isLoadingCollaboratorsState, setIsLoadingCollaboratorsState] = useState(true);
 
   const [isPasswordPromptOpen, setIsPasswordPromptOpen] = useState(false);
   const [targetAdminCollaboratorToSwitch, setTargetAdminCollaboratorToSwitch] = useState<ActiveCollaboratorStorageData | null>(null);
   const [passwordForReauth, setPasswordForReauth] = useState("");
   const [isReauthenticating, setIsReauthenticating] = useState(false);
-
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -117,33 +111,33 @@ export function AppSidebar() {
         setCurrentUser(null);
         setCompanyId(null);
         setCollaborators([]);
-        setActiveCollaborator(null); // Resetta anche il context
+        setActiveCollaborator(null);
       }
     });
     return () => unsubscribe();
-  }, [setActiveCollaborator]); // Aggiungi setActiveCollaborator alle dipendenze
+  }, [setActiveCollaborator]);
 
   const setDefaultActiveCollaboratorInContext = useCallback((collaboratorList: Collaborator[], user: FirebaseUser | null) => {
     if (user && collaboratorList.length > 0) {
       const adminCollaborator = collaboratorList.find(c => c.email === user.email && c.ruolo === "Amministratore");
       let defaultActive: ActiveCollaboratorStorageData | null = null;
       if (adminCollaborator) {
-        defaultActive = { 
-          id: adminCollaborator.id, 
+        defaultActive = {
+          id: adminCollaborator.id,
           nome_completo: adminCollaborator.nome_completo,
           ruolo: adminCollaborator.ruolo
         };
       } else if (collaboratorList.length > 0) {
         const firstCollaborator = collaboratorList[0];
-        defaultActive = { 
-            id: firstCollaborator.id, 
+        defaultActive = {
+            id: firstCollaborator.id,
             nome_completo: firstCollaborator.nome_completo,
             ruolo: firstCollaborator.ruolo
         };
       }
-      setActiveCollaborator(defaultActive); // Imposta tramite context
+      setActiveCollaborator(defaultActive);
     } else {
-      setActiveCollaborator(null); // Imposta tramite context
+      setActiveCollaborator(null);
     }
   }, [setActiveCollaborator]);
 
@@ -163,14 +157,11 @@ export function AppSidebar() {
       } as Collaborator));
       setCollaborators(fetchedCollaborators);
 
-      // Se non c'è un activeCollaborator nel context (o se quello nel context non è valido), imposta il default.
-      // isLoadingActiveCollaborator dal context ci dice se il valore iniziale da localStorage è stato caricato.
       if (!isLoadingActiveCollaborator) {
-        const currentActive = activeCollaborator; // Leggi dal context
+        const currentActive = activeCollaborator;
         if (!currentActive || !fetchedCollaborators.some(c => c.id === currentActive.id)) {
           setDefaultActiveCollaboratorInContext(fetchedCollaborators, auth.currentUser);
         } else {
-           // Assicurati che il ruolo sia aggiornato se è cambiato nel DB
            const matchingDbCollaborator = fetchedCollaborators.find(c => c.id === currentActive.id);
            if(matchingDbCollaborator && currentActive.ruolo !== matchingDbCollaborator.ruolo){
              setActiveCollaborator({...currentActive, ruolo: matchingDbCollaborator.ruolo });
@@ -212,7 +203,7 @@ export function AppSidebar() {
         title: "Logout Effettuato",
         description: "Sei stato disconnesso con successo.",
       });
-      setActiveCollaborator(null); // Resetta activeCollaborator nel context
+      setActiveCollaborator(null);
       router.push("/");
     } catch (error) {
       console.error("Errore durante il logout:", error);
@@ -227,20 +218,20 @@ export function AppSidebar() {
   const handleActiveCollaboratorChange = (collaboratorId: string) => {
     const selected = collaborators.find(c => c.id === collaboratorId);
     if (selected) {
-      const newActiveTarget: ActiveCollaboratorStorageData = { 
-        id: selected.id, 
+      const newActiveTarget: ActiveCollaboratorStorageData = {
+        id: selected.id,
         nome_completo: selected.nome_completo,
         ruolo: selected.ruolo
       };
       
-      const currentActiveContextCollaborator = activeCollaborator; // Leggi dal context
+      const currentActiveContextCollaborator = activeCollaborator;
 
-      if (newActiveTarget.ruolo === "Amministratore" && 
+      if (newActiveTarget.ruolo === "Amministratore" &&
           !(currentActiveContextCollaborator?.ruolo === "Amministratore" && currentActiveContextCollaborator?.id === newActiveTarget.id)) {
         setTargetAdminCollaboratorToSwitch(newActiveTarget);
         setIsPasswordPromptOpen(true);
       } else {
-        setActiveCollaborator(newActiveTarget); // Imposta tramite context
+        setActiveCollaborator(newActiveTarget);
         toast({ title: "Utente Attivo Cambiato", description: `Ora stai operando come ${newActiveTarget.nome_completo}.` });
       }
     }
@@ -258,7 +249,7 @@ export function AppSidebar() {
       const credential = EmailAuthProvider.credential(currentUser.email, passwordForReauth);
       await reauthenticateWithCredential(currentUser, credential);
       
-      setActiveCollaborator(targetAdminCollaboratorToSwitch); // Imposta tramite context
+      setActiveCollaborator(targetAdminCollaboratorToSwitch);
       toast({ title: "Successo!", description: `Ora stai operando come Amministratore: ${targetAdminCollaboratorToSwitch.nome_completo}.` });
       
       setIsPasswordPromptOpen(false);
@@ -339,7 +330,7 @@ export function AppSidebar() {
                 ) : (
                   <Link href={item.href} legacyBehavior passHref>
                     <SidebarMenuButton
-                      isActive={currentPathname === item.href && !item.href.includes("?")} // Evita attivazione se ci sono query params e non è una subitem
+                      isActive={currentPathname === item.href && !item.href.includes("?")}
                       tooltip={sidebarState === "collapsed" ? item.label : undefined}
                     >
                       <item.icon />
