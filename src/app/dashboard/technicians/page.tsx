@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Users, PlusCircle, Search, Edit, Trash2, Loader2, MapPin } from "lucide-react"; // Aggiunto MapPin
+import { Users, PlusCircle, Search, Edit, Trash2, Loader2, MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +22,7 @@ export interface Technician {
   nome_completo: string;
   email?: string;
   telefono?: string;
-  citta?: string; // Aggiunto campo città
+  citta?: string;
   competenze?: string[];
   stato: string;
   data_creazione: Timestamp;
@@ -92,7 +92,7 @@ export default function TechniciansPage() {
       const searchTermLower = searchTerm.toLowerCase();
       return tech.nome_completo.toLowerCase().includes(searchTermLower) ||
              (tech.email && tech.email.toLowerCase().includes(searchTermLower)) ||
-             (tech.citta && tech.citta.toLowerCase().includes(searchTermLower)) || // Aggiunta ricerca per città
+             (tech.citta && tech.citta.toLowerCase().includes(searchTermLower)) ||
              (tech.competenze && tech.competenze.some(skill => skill.toLowerCase().includes(searchTermLower)));
     });
   }, [technicians, searchTerm]);
@@ -111,7 +111,7 @@ export default function TechniciansPage() {
         : Array.isArray(data.competenze) ? data.competenze : [];
 
       await updateDoc(technicianDocRef, {
-        ...data, // include città se presente in data
+        ...data,
         competenze: competenzeArray,
         email: data.email || null,
         telefono: data.telefono || null,
@@ -193,14 +193,7 @@ export default function TechniciansPage() {
                 <div className="overflow-x-auto">
                 <table className="w-full">
                     <thead>
-                    <tr className="border-b">
-                        <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Nome</th>
-                        <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Contatti</th>
-                        <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Città</th> {/* Nuova colonna Città */}
-                        <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Competenze</th>
-                        <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th>
-                        <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
-                    </tr>
+                      <tr className="border-b"><th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Nome</th><th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Contatti</th><th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Città</th><th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Competenze</th><th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th><th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th></tr>
                     </thead>
                     <tbody>
                     {filteredTechnicians.map((tech) => (
@@ -218,7 +211,7 @@ export default function TechniciansPage() {
                             <div>{tech.email || "N/D"}</div>
                             <div className="text-xs text-muted-foreground">{tech.telefono || "N/D"}</div>
                         </td>
-                        <td className="p-3 text-sm whitespace-nowrap">{tech.citta || "N/D"}</td> {/* Visualizzazione Città */}
+                        <td className="p-3 text-sm whitespace-nowrap">{tech.citta || "N/D"}</td>
                         <td className="p-3 text-sm">
                             <div className="flex flex-wrap gap-1">
                             {(tech.competenze && tech.competenze.length > 0) ? tech.competenze.map(skill => <Badge key={skill} variant="secondary">{skill}</Badge>) : <span className="text-muted-foreground">N/D</span>}
@@ -262,5 +255,3 @@ export default function TechniciansPage() {
     </div>
   );
 }
-
-    
