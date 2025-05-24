@@ -5,10 +5,11 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity } from "lucide-react"; // Cambiato Users con Activity
+import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton"; 
 import { RequestDetailsSheet } from "@/components/dashboard/requests/RequestDetailsSheet";
 import { useToast } from "@/hooks/use-toast";
+import { ScrollArea } from "@/components/ui/scroll-area"; // Import ScrollArea
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -17,7 +18,7 @@ import { collection, query, where, getCountFromServer, getDocs, orderBy, limit, 
 interface DashboardStats {
   activeRequests: number | null; 
   assignedRequests: number | null; 
-  inProgressRequests: number | null; // Modificato da techniciansAvailable
+  inProgressRequests: number | null;
 }
 
 export interface RecentRequest {
@@ -41,14 +42,14 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     activeRequests: null,
     assignedRequests: null, 
-    inProgressRequests: null, // Modificato
+    inProgressRequests: null,
   });
   const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([]);
   
   const [loadingStats, setLoadingStats] = useState({
     activeRequests: true,
     assignedRequests: true, 
-    inProgressRequests: true, // Modificato
+    inProgressRequests: true,
   });
   const [loadingRequests, setLoadingRequests] = useState(true);
 
@@ -63,9 +64,9 @@ export default function DashboardPage() {
       } else {
         setCurrentUser(null);
         setCompanyId(null);
-        setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 }); // Modificato
+        setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 });
         setRecentRequests([]);
-        setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false }); // Modificato
+        setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false });
         setLoadingRequests(false);
       }
     });
@@ -74,9 +75,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!companyId) {
-      setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false }); // Modificato
+      setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false });
       setLoadingRequests(false);
-      setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 }); // Modificato
+      setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 });
       setRecentRequests([]);
       return;
     }
@@ -88,7 +89,7 @@ export default function DashboardPage() {
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "not-in", ["completata", "annullata"]) 
+          where("stato", "not-in", ["completata", "annullata"])
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
         setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
@@ -118,22 +119,22 @@ export default function DashboardPage() {
         setLoadingStats(prev => ({ ...prev, assignedRequests: false })); 
       }
       
-      // Fetch In Progress Requests (ex-Technicians Available)
-      setLoadingStats(prev => ({ ...prev, inProgressRequests: true })); // Modificato
+      // Fetch In Progress Requests
+      setLoadingStats(prev => ({ ...prev, inProgressRequests: true }));
       try {
-        const inProgressRequestsQuery = query( // Modificato
-          collection(db, "richieste_clienti"), // Modificato: target richieste_clienti
+        const inProgressRequestsQuery = query(
+          collection(db, "richieste_clienti"), 
           where("id_azienda", "==", companyId),
-          where("stato", "==", "in corso") // Modificato: filtra per stato "in corso"
+          where("stato", "==", "in corso") 
         );
-        const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery); // Modificato
-        setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count })); // Modificato
+        const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
+        setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
       } catch (error) {
-        console.error("Error fetching in-progress requests stats:", error); // Modificato
-        toast({ title: "Errore Richieste In Corso", description: "Impossibile caricare il conteggio delle richieste in corso.", variant: "destructive" }); // Modificato
-        setStats(prev => ({ ...prev, inProgressRequests: 0 })); // Modificato
+        console.error("Error fetching in-progress requests stats:", error);
+        toast({ title: "Errore Richieste In Corso", description: "Impossibile caricare il conteggio delle richieste in corso.", variant: "destructive" });
+        setStats(prev => ({ ...prev, inProgressRequests: 0 }));
       } finally {
-        setLoadingStats(prev => ({ ...prev, inProgressRequests: false })); // Modificato
+        setLoadingStats(prev => ({ ...prev, inProgressRequests: false }));
       }
 
       // Fetch Recent Requests (Table)
@@ -143,7 +144,7 @@ export default function DashboardPage() {
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
           orderBy("created_at", "desc"), 
-          limit(5)
+          limit(10) // Increased limit to 10
         );
         const requestsSnapshot = await getDocs(requestsQuery);
         const fetchedRequests = requestsSnapshot.docs.map(doc => {
@@ -190,9 +191,8 @@ export default function DashboardPage() {
         )
       );
       
-      // Refetch stats that might be affected by status change
       if (companyId) {
-        setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true })); // Modificato
+        setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true }));
         try {
             const activeRequestsQuery = query(
             collection(db, "richieste_clienti"),
@@ -210,7 +210,7 @@ export default function DashboardPage() {
             const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
             setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
 
-            const inProgressRequestsQuery = query( // Aggiunto ricalcolo per inProgressRequests
+            const inProgressRequestsQuery = query( 
                 collection(db, "richieste_clienti"),
                 where("id_azienda", "==", companyId),
                 where("stato", "==", "in corso")
@@ -220,9 +220,9 @@ export default function DashboardPage() {
 
         } catch (error) {
             console.error("Error refetching stats after update:", error);
-            setStats(prev => ({ ...prev, activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 })); // Modificato
+            setStats(prev => ({ ...prev, activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 }));
         } finally {
-            setLoadingStats(prev => ({ ...prev, activeRequests: false, assignedRequests: false, inProgressRequests: false })); // Modificato
+            setLoadingStats(prev => ({ ...prev, activeRequests: false, assignedRequests: false, inProgressRequests: false }));
         }
       }
 
@@ -277,18 +277,18 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground">Richieste con tecnico assegnato</p> 
           </CardContent>
         </Card>
-        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300"> {/* Terza Card Modificata */}
+        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Richieste In Corso</CardTitle> {/* Modificato Titolo */}
-            <Activity className="h-5 w-5 text-primary" /> {/* Modificata Icona */}
+            <CardTitle className="text-sm font-medium">Richieste In Corso</CardTitle>
+            <Activity className="h-5 w-5 text-primary" />
           </CardHeader>
           <CardContent>
-            {loadingStats.inProgressRequests ? ( /* Modificato */
+            {loadingStats.inProgressRequests ? (
               <Skeleton className="h-7 w-1/4" />
             ) : (
-              <div className="text-2xl font-bold">{stats.inProgressRequests ?? 0}</div> /* Modificato */
+              <div className="text-2xl font-bold">{stats.inProgressRequests ?? 0}</div>
             )}
-            <p className="text-xs text-muted-foreground">Richieste attualmente in lavorazione</p> {/* Modificato testo */}
+            <p className="text-xs text-muted-foreground">Richieste attualmente in lavorazione</p>
           </CardContent>
         </Card>
       </div>
@@ -306,53 +306,55 @@ export default function DashboardPage() {
               <Skeleton className="h-8 w-full" />
             </div>
           ) : recentRequests.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">ID</th>
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Cliente</th>
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Servizio</th>
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Stato</th>
-                    <th className="p-3 text-right text-sm font-semibold text-muted-foreground">Azioni</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentRequests.map((req) => (
-                    <tr key={req.id} className="border-b hover:bg-muted/50">
-                      <td className="p-3 text-sm font-medium text-primary">{req.id.substring(0, 6)}...</td>
-                      <td className="p-3 text-sm">{req.customer}</td>
-                      <td className="p-3 text-sm">{req.service}</td>
-                      <td className="p-3 text-sm">
-                        <span className={`px-2 py-1 text-xs rounded-full capitalize ${
-                          req.status === "completata" ? "bg-green-100 text-green-700" :
-                          req.status === "assegnata" ? "bg-blue-100 text-blue-700" :
-                          req.status === "in attesa" || req.status === "In Attesa" ? "bg-orange-100 text-orange-700" : 
-                          req.status === "programmata" ? "bg-yellow-100 text-yellow-700" :
-                          req.status === "in corso" ? "bg-indigo-100 text-indigo-700" :
-                          req.status === "annullata" ? "bg-red-100 text-red-700" :
-                          "bg-gray-100 text-gray-700" 
-                        }`}>
-                          {req.status.replace("_", " ")}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right text-sm">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => {
-                            setSelectedRequest(req);
-                            setIsSheetOpen(true);
-                          }}
-                        >
-                          Dettagli
-                        </Button>
-                      </td>
+            <ScrollArea className="h-[320px] w-full"> {/* Adjusted height and wrapped table container */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card">ID</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card">Cliente</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card">Servizio</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card">Stato</th>
+                      <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card">Azioni</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {recentRequests.map((req) => (
+                      <tr key={req.id} className="border-b hover:bg-muted/50">
+                        <td className="p-3 text-sm font-medium text-primary">{req.id.substring(0, 6)}...</td>
+                        <td className="p-3 text-sm">{req.customer}</td>
+                        <td className="p-3 text-sm">{req.service}</td>
+                        <td className="p-3 text-sm">
+                          <span className={`px-2 py-1 text-xs rounded-full capitalize ${
+                            req.status === "completata" ? "bg-green-100 text-green-700" :
+                            req.status === "assegnata" ? "bg-blue-100 text-blue-700" :
+                            req.status === "in attesa" || req.status === "In Attesa" ? "bg-orange-100 text-orange-700" : 
+                            req.status === "programmata" ? "bg-yellow-100 text-yellow-700" :
+                            req.status === "in corso" ? "bg-indigo-100 text-indigo-700" :
+                            req.status === "annullata" ? "bg-red-100 text-red-700" :
+                            "bg-gray-100 text-gray-700" 
+                          }`}>
+                            {req.status.replace("_", " ")}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right text-sm">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => {
+                              setSelectedRequest(req);
+                              setIsSheetOpen(true);
+                            }}
+                          >
+                            Dettagli
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </ScrollArea>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="mx-auto h-12 w-12 mb-2" />
@@ -397,3 +399,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
