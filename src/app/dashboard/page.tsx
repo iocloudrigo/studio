@@ -89,7 +89,7 @@ export default function DashboardPage() {
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "not-in", ["completata", "annullata"])
+          where("stato", "not-in", ["completata", "annullata"]) 
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
         setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
@@ -144,7 +144,7 @@ export default function DashboardPage() {
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
           orderBy("created_at", "desc"), 
-          limit(10) // Increased limit to 10
+          limit(10) 
         );
         const requestsSnapshot = await getDocs(requestsQuery);
         const fetchedRequests = requestsSnapshot.docs.map(doc => {
@@ -306,7 +306,7 @@ export default function DashboardPage() {
               <Skeleton className="h-8 w-full" />
             </div>
           ) : recentRequests.length > 0 ? (
-            <ScrollArea className="h-[320px] w-full"> {/* Adjusted height and wrapped table container */}
+            <ScrollArea className="h-[380px] w-full"> {/* Increased height */}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
