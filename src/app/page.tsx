@@ -139,7 +139,7 @@ export default function LandingPage() {
             <div>
               <h2 className="mb-4 text-3xl font-bold text-primary">A Chi è Rivolto?</h2>
               <p className="mb-4 text-muted-foreground">
-                Incastro è ideale per una vasta gamma di professionisti e aziende, tra cui:
+                Incastro è pensato per:
               </p>
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-center">
@@ -159,6 +159,9 @@ export default function LandingPage() {
                   Freelancer per appuntamenti e interventi.
                 </li>
               </ul>
+              <p className="mt-4 text-muted-foreground">
+                Che tu sia da solo o gestisca un team, Incastro si adatta ai tuoi ritmi.
+              </p>
             </div>
           </div>
         </section>
