@@ -44,6 +44,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
 
 const companyFormSchema = z.object({
@@ -66,13 +67,13 @@ const profileFormSchema = z.object({
   confirmNewPassword: z.string().optional(),
 }).refine(data => {
   if (data.newPassword && !data.confirmNewPassword) {
-    return false; // Richiede conferma se la nuova password è inserita
+    return false; 
   }
   if (data.newPassword && data.newPassword !== data.confirmNewPassword) {
-    return false; // Le password devono coincidere
+    return false; 
   }
   if (data.newPassword && data.newPassword.length < 6) {
-    return false; // Lunghezza minima password
+    return false; 
   }
   return true;
 }, {
@@ -95,6 +96,8 @@ export interface Collaborator {
   ruolo: string;
   id_azienda: string; 
 }
+
+const LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY = "activeIncastroCollaborator";
 
 const generateSlug = (name: string): string => {
   if (!name) return "";
@@ -207,7 +210,7 @@ export default function SettingsPage() {
           updates.nome_completo = adminName;
           needsUpdate = true;
         }
-        if (adminCollabDoc.data().ruolo !== "Amministratore") { // Assicura che il ruolo sia Amministratore
+        if (adminCollabDoc.data().ruolo !== "Amministratore") { 
           updates.ruolo = "Amministratore";
           needsUpdate = true;
         }
@@ -262,9 +265,6 @@ export default function SettingsPage() {
                 email_contatto: user.email || "",
                 slug: generateSlug(user.displayName || "mia-azienda"),
              });
-             // Anche se l'azienda non esiste in Firestore, assicuriamoci che l'admin sia creato come collaboratore
-             // quando l'azienda verrà salvata per la prima volta.
-             // ensureAdminCollaboratorExists(user); // Potrebbe essere chiamato dopo il primo salvataggio dell'azienda
           }
         } catch (error) {
           console.error("Errore nel caricare i dati dell'azienda:", error);
@@ -346,7 +346,7 @@ export default function SettingsPage() {
 
       await setDoc(companyDocRef, dataToUpdate, { merge: true });
       
-      if (isNewCompany) { // Se era una nuova azienda, assicurati che l'admin sia aggiunto ai collaboratori
+      if (isNewCompany) { 
         await ensureAdminCollaboratorExists(currentUser);
       }
 
@@ -374,36 +374,49 @@ export default function SettingsPage() {
       toast({ title: "Errore", description: "Utente non autenticato o ID azienda mancante.", variant: "destructive" });
       return;
     }
-    setIsSavingProfile(true);
 
-    // Controllo esplicito del ruolo
-    const selfAsCollaborator = collaborators.find(c => c.email === currentUser.email && c.id_azienda === companyId);
-    if (!selfAsCollaborator || selfAsCollaborator.ruolo !== "Amministratore") {
-        toast({
-            title: "Azione Non Permessa",
-            description: "Solo un utente con il ruolo 'Amministratore' può modificare questi dettagli del profilo.",
-            variant: "destructive"
-        });
+    // Controllo del ruolo del COLLABORATORE ATTIVO (selezionato nella sidebar)
+    const storedActiveCollaboratorString = localStorage.getItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
+    if (!storedActiveCollaboratorString) {
+      toast({ title: "Errore", description: "Nessun collaboratore attivo selezionato. Seleziona un Amministratore per procedere.", variant: "destructive" });
+      setIsSavingProfile(false);
+      return;
+    }
+    let activeCollaboratorStorage: { id: string; nome_completo: string };
+    try {
+        activeCollaboratorStorage = JSON.parse(storedActiveCollaboratorString);
+    } catch (e) {
+        toast({ title: "Errore", description: "Dati collaboratore attivo non validi.", variant: "destructive" });
         setIsSavingProfile(false);
         return;
     }
+    
+    const activeCollaboratorDetails = collaborators.find(c => c.id === activeCollaboratorStorage.id);
 
+    if (!activeCollaboratorDetails || activeCollaboratorDetails.ruolo !== "Amministratore") {
+      toast({
+        title: "Azione Non Permessa",
+        description: "Devi aver selezionato un utente con ruolo 'Amministratore' nella sidebar per modificare i dettagli del profilo principale.",
+        variant: "destructive"
+      });
+      setIsSavingProfile(false);
+      return;
+    }
+    // Fine controllo ruolo collaboratore attivo
+
+    setIsSavingProfile(true);
     let profileUpdated = false;
     let emailUpdatedInAuth = false;
 
     try {
-      // Update Display Name
       if (data.displayName !== currentUser.displayName) {
         await updateProfile(currentUser, { displayName: data.displayName });
-        // Non è necessario aggiornare currentUser qui perché onAuthStateChanged lo farà.
         profileUpdated = true;
       }
 
-      // Update Email
       if (data.email !== currentUser.email) {
         try {
           await updateEmail(currentUser, data.email);
-          // Non è necessario aggiornare currentUser qui.
           const companyDocRef = doc(db, "aziende", currentUser.uid);
           await updateDoc(companyDocRef, { email_admin: data.email });
           profileUpdated = true;
@@ -419,7 +432,6 @@ export default function SettingsPage() {
         }
       }
 
-      // Update Password
       if (data.newPassword) {
         if (data.newPassword.length < 6) {
           profileForm.setError("newPassword", { message: "La password deve contenere almeno 6 caratteri." });
@@ -445,30 +457,63 @@ export default function SettingsPage() {
       }
 
       // Sincronizza i dettagli dell'amministratore con collaboratori_azienda
-      const adminCollaboratorsRef = collection(db, "collaboratori_azienda");
-      const adminEmailForQuery = emailUpdatedInAuth ? data.email : (currentUser.email || "");
-      const q = query(adminCollaboratorsRef, where("id_azienda", "==", currentUser.uid), where("email", "==", adminEmailForQuery));
-      const adminCollabSnapshot = await getDocs(q);
+      // Usa l'email dell'utente corrente dopo un eventuale aggiornamento
+      const currentAuthUserAfterPossibleUpdates = auth.currentUser; 
+      if (currentAuthUserAfterPossibleUpdates) {
+        const adminEmailForQuery = currentAuthUserAfterPossibleUpdates.email || "";
+        const adminDisplayNameForUpdate = currentAuthUserAfterPossibleUpdates.displayName || data.displayName;
 
-      if (!adminCollabSnapshot.empty) {
-        const adminCollabDocRef = adminCollabSnapshot.docs[0].ref;
-        await updateDoc(adminCollabDocRef, { 
-          nome_completo: data.displayName,
-          email: data.email, // Assicura che l'email sia aggiornata anche qui
-          ruolo: "Amministratore" // Riafferma il ruolo
-        });
-      } else {
-        // Se non esiste (improbabile dopo ensureAdminCollaboratorExists), crealo
-        await addDoc(adminCollaboratorsRef, {
-          id_azienda: currentUser.uid,
-          nome_completo: data.displayName,
-          email: data.email,
-          ruolo: "Amministratore",
-          data_creazione: serverTimestamp(),
-        });
+        const adminCollaboratorsRef = collection(db, "collaboratori_azienda");
+        // Cerca il collaboratore admin usando l'UID dell'admin (currentUser.uid) E la sua email corrente.
+        // L'email potrebbe essere cambiata, quindi non possiamo fare affidamento solo sulla vecchia email.
+        // Se un admin cambia email, il suo vecchio record collaboratore (con la vecchia email) deve essere aggiornato.
+        // E se per caso ci fosse un altro record con la nuova email (improbabile se email sono uniche),
+        // dobbiamo essere cauti. Un approccio più sicuro è trovare il record dell'admin tramite un ID fisso se possibile,
+        // o usare l'email solo come uno dei criteri. Per ora, assumiamo che l'admin sia l'unico con la sua email
+        // all'interno della sua azienda e che il suo record sia quello da aggiornare.
+
+        // Trova il record collaboratore dell'admin usando l'ID dell'azienda e la vecchia email
+        // (prima dell'aggiornamento, se l'email è cambiata).
+        const oldEmail = currentUser.email; // Email prima di questa operazione di salvataggio
+        let adminCollabDocRef;
+
+        const qOld = query(adminCollaboratorsRef, where("id_azienda", "==", currentUser.uid), where("email", "==", oldEmail));
+        const oldAdminCollabSnapshot = await getDocs(qOld);
+
+        if (!oldAdminCollabSnapshot.empty) {
+          adminCollabDocRef = oldAdminCollabSnapshot.docs[0].ref;
+          await updateDoc(adminCollabDocRef, { 
+            nome_completo: adminDisplayNameForUpdate,
+            email: adminEmailForQuery, // Aggiorna all'email corrente (potrebbe essere nuova)
+            ruolo: "Amministratore" 
+          });
+        } else {
+          // Se non trovato con la vecchia email (improbabile se ensureAdminCollaboratorExists funziona),
+          // o se l'email è cambiata e vogliamo creare un nuovo record (meno ideale),
+          // per ora tentiamo di creare se non esiste.
+          // Idealmente, `ensureAdminCollaboratorExists` dovrebbe gestire la creazione.
+          // Questo blocco 'else' è un fallback.
+          const qNew = query(adminCollaboratorsRef, where("id_azienda", "==", currentUser.uid), where("email", "==", adminEmailForQuery));
+          const newAdminCollabSnapshot = await getDocs(qNew);
+          if (newAdminCollabSnapshot.empty) {
+            await addDoc(adminCollaboratorsRef, {
+              id_azienda: currentUser.uid,
+              nome_completo: adminDisplayNameForUpdate,
+              email: adminEmailForQuery,
+              ruolo: "Amministratore",
+              data_creazione: serverTimestamp(),
+            });
+          } else {
+            // Esiste già un record con la nuova email, aggiorniamolo (potrebbe essere lo stesso admin)
+            adminCollabDocRef = newAdminCollabSnapshot.docs[0].ref;
+             await updateDoc(adminCollabDocRef, { 
+                nome_completo: adminDisplayNameForUpdate,
+                ruolo: "Amministratore" 
+            });
+          }
+        }
+        if (companyId) fetchCollaborators(companyId);
       }
-      // Ricarica la lista dei collaboratori per riflettere le modifiche
-      if (companyId) fetchCollaborators(companyId);
 
 
       if (profileUpdated) {
@@ -476,7 +521,6 @@ export default function SettingsPage() {
       } else {
         toast({ title: "Info", description: "Nessuna modifica rilevata nel profilo." });
       }
-      // profileForm.reset(data); // Resetta il form con i nuovi dati (eccetto password)
 
     } catch (error: any) {
       console.error("Errore aggiornamento profilo:", error);
@@ -525,25 +569,34 @@ export default function SettingsPage() {
   };
 
   const handleUpdateCollaborator = async (collaboratorId: string, data: CollaboratorEditFormValues) => {
-    if (!companyId) return;
-    try {
-      // Controllo per impedire la modifica dell'email dell'admin principale se è diversa da quella corrente
-      if (collaboratorId === collaborators.find(c => c.email === currentUser?.email && c.ruolo === "Amministratore")?.id && data.email !== currentUser?.email) {
-          const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", companyId), where("email", "==", data.email));
-          const emailCheckSnapshot = await getDocs(q);
-          if (!emailCheckSnapshot.empty && emailCheckSnapshot.docs.some(d => d.id !== collaboratorId)) {
-            toast({ title: "Errore", description: "Questa email è già in uso.", variant: "destructive" });
-            throw new Error("Email già in uso");
-          }
-      }
+    if (!companyId || !currentUser) return;
 
+    // Impedisci la modifica dell'email del collaboratore-admin se l'email è diversa da quella dell'admin Auth corrente.
+    const collaboratorToUpdate = collaborators.find(c => c.id === collaboratorId);
+    if (collaboratorToUpdate?.email === currentUser.email && data.email !== currentUser.email && collaboratorToUpdate.ruolo === "Amministratore") {
+        toast({title: "Azione non permessa", description: "L'email del profilo Amministratore principale deve essere modificata tramite il form 'Profilo Utente Amministratore'.", variant: "destructive"});
+        throw new Error("Cannot change primary admin email here.");
+    }
+    
+    // Controllo unicità email se l'email viene cambiata
+    if (data.email !== collaboratorToUpdate?.email) {
+      const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", companyId), where("email", "==", data.email));
+      const emailCheckSnapshot = await getDocs(q);
+      if (!emailCheckSnapshot.empty && emailCheckSnapshot.docs.some(d => d.id !== collaboratorId)) {
+        toast({ title: "Errore", description: "Questa email è già in uso da un altro collaboratore.", variant: "destructive" });
+        throw new Error("Email già in uso");
+      }
+    }
+
+
+    try {
       const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
       await updateDoc(collaboratorDocRef, data); 
       toast({ title: "Successo!", description: "Collaboratore aggiornato."});
       fetchCollaborators(companyId);
     } catch (error: any) {
       console.error("Errore aggiornamento collaboratore:", error);
-      if (error.message !== "Email già in uso") {
+      if (error.message !== "Email già in uso" && error.message !== "Cannot change primary admin email here.") {
         toast({ title: "Errore Aggiornamento", description: error.message || "Impossibile aggiornare il collaboratore.", variant: "destructive" });
       }
       throw error; 
@@ -619,7 +672,6 @@ export default function SettingsPage() {
                         type="button" 
                         disabled
                         onClick={() => {
-                          // La logica di caricamento è stata rimossa per ora
                           toast({title: "Info", description: "Funzionalità di caricamento logo (Prossimamente)."})
                         }}
                     >
@@ -1008,3 +1060,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    
