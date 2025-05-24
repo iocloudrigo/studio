@@ -27,14 +27,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { Loader2, User, Phone, Mail, MapPin, CalendarDays, Clock, StickyNote, Wrench } from "lucide-react";
-import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, writeBatch } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
+// Firebase imports
+import { collection, addDoc, serverTimestamp, doc, runTransaction, getDoc, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase"; // Assicurati che db sia esportato da firebase.ts
+
+// Schema di validazione per il form
 const RichiediInterventoFormSchema = z.object({
-  id_azienda: z.string().min(1, "ID Azienda è richiesto."), // Campo nascosto ma necessario
+  id_azienda: z.string().min(1, "ID Azienda è richiesto."),
   nome_cliente: z.string().min(1, "Nome e Cognome del cliente è obbligatorio."),
   telefono_cliente: z.string().min(1, "Numero di telefono è obbligatorio."),
-  email_cliente: z.string().email("Indirizzo email non valido.").optional().or(z.literal("")),
+  email_cliente: z.string().email({ message: "Indirizzo email non valido." }).optional().or(z.literal("")),
   indirizzo_intervento: z.string().min(1, "Indirizzo dell'intervento è obbligatorio."),
   giorno_preferito: z.string().min(1, "Giorno preferito è obbligatorio."),
   fascia_oraria: z.string().min(1, "Fascia oraria preferita è obbligatoria."),
@@ -44,22 +47,22 @@ const RichiediInterventoFormSchema = z.object({
 
 type RichiediInterventoFormValues = z.infer<typeof RichiediInterventoFormSchema>;
 
-export interface RichiediInterventoFormProps {
+const giorniSettimana = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì"];
+const fasceOrarie = ["Mattina (9-13)", "Pomeriggio (14-18)", "Sera (18-20)"];
+
+interface RichiediInterventoFormProps {
   id_azienda: string;
   companyDisplayName: string;
 }
 
-const giorniSettimana = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì"];
-const fasceOrarie = ["Mattina (9-13)", "Pomeriggio (14-18)", "Sera (18-20)"];
-
-export function RichiediInterventoForm({ id_azienda, companyDisplayName }: RichiediInterventoFormProps) {
+export function RichiediInterventoForm({ id_azienda: id_aziendaProp, companyDisplayName }: RichiediInterventoFormProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<RichiediInterventoFormValues>({
     resolver: zodResolver(RichiediInterventoFormSchema),
     defaultValues: {
-      id_azienda: id_azienda,
+      id_azienda: id_aziendaProp,
       nome_cliente: "",
       telefono_cliente: "",
       email_cliente: "",
@@ -71,69 +74,21 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
     },
   });
   
-  async function upsertCliente(data: RichiediInterventoFormValues) {
-    if (!data.email_cliente) { // Non creare/aggiornare se l'email non è fornita
-      console.log("Email cliente non fornita, skip creazione/aggiornamento cliente.");
-      return;
-    }
-    
-    try {
-      const clientiRef = collection(db, "clienti");
-      const q = query(clientiRef, where("id_azienda", "==", data.id_azienda), where("email", "==", data.email_cliente), limit(1));
-      const querySnapshot = await getDocs(q);
-
-      const clienteData = {
-        id_azienda: data.id_azienda,
-        nome_completo: data.nome_cliente,
-        email: data.email_cliente,
-        telefono: data.telefono_cliente,
-        indirizzo: data.indirizzo_intervento, // Potrebbe essere l'indirizzo dell'ultimo intervento
-        data_ultima_richiesta: serverTimestamp(),
-      };
-
-      if (querySnapshot.empty) {
-        // Cliente non trovato, creane uno nuovo
-        await addDoc(clientiRef, {
-          ...clienteData,
-          data_creazione: serverTimestamp(),
-        });
-        console.log("Nuovo cliente creato automaticamente:", data.email_cliente);
-      } else {
-        // Cliente trovato, aggiorna data_ultima_richiesta (e altri campi se necessario)
-        const clienteDocRef = querySnapshot.docs[0].ref;
-        const batch = writeBatch(db);
-        batch.update(clienteDocRef, {
-            nome_completo: data.nome_cliente, // Aggiorna nome se diverso
-            telefono: data.telefono_cliente, // Aggiorna telefono se diverso
-            indirizzo: data.indirizzo_intervento, // Aggiorna indirizzo
-            data_ultima_richiesta: serverTimestamp()
-        });
-        await batch.commit();
-        console.log("Dati cliente aggiornati per:", data.email_cliente);
-      }
-    } catch (error) {
-      console.error("Errore durante la creazione/aggiornamento automatico del cliente:", error);
-      // Non bloccare l'invio della richiesta per questo, ma logga l'errore
-      toast({
-        title: "Info Cliente",
-        description: "Non è stato possibile aggiornare automaticamente l'anagrafica cliente.",
-        variant: "default", // Non è un errore bloccante per la richiesta
-      });
-    }
-  }
-
-
   async function onSubmit(data: RichiediInterventoFormValues) {
-    console.log("Dati del form prima del submit:", data);
-    if (!id_azienda) {
-      toast({
-        title: "Errore Configurazione",
-        description: "ID Azienda non trovato nel form. Contattare l'assistenza.",
-        variant: "destructive",
-      });
-      return;
-    }
     setIsLoading(true);
+    console.log("[RichiediInterventoForm] Form submitted with data:", JSON.stringify(data, null, 2));
+
+    if (!data.id_azienda) {
+        toast({
+            title: "Errore Interno",
+            description: "ID Azienda mancante. Impossibile inviare la richiesta.",
+            variant: "destructive",
+        });
+        setIsLoading(false);
+        console.error("[RichiediInterventoForm] id_azienda is missing in submitted data just before Firestore operation.");
+        return;
+    }
+
     try {
       const docData = {
         id_azienda: data.id_azienda,
@@ -145,29 +100,65 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
         fascia_oraria: data.fascia_oraria,
         tipo_servizio: data.tipo_servizio,
         note_aggiuntive: data.note_aggiuntive || null,
-        stato: "in attesa",
+        stato: "in attesa", // Stato iniziale in minuscolo
         created_at: serverTimestamp(),
       };
-
+      console.log("[RichiediInterventoForm] Preparing to add request document:", JSON.stringify(docData, null, 2));
       await addDoc(collection(db, "richieste_clienti"), docData);
-      
-      // Dopo aver salvato la richiesta, prova a creare/aggiornare il cliente
-      await upsertCliente(data);
+      console.log("[RichiediInterventoForm] Request document added successfully.");
 
       toast({
         title: "Richiesta Inviata!",
         description: "La tua richiesta di intervento è stata inviata con successo. Verrai ricontattato al più presto.",
       });
       form.reset();
-    } catch (error: any) {
-      console.error("Errore durante l'invio della richiesta: ", error);
-      let errorMessage = "Si è verificato un errore durante l'invio della richiesta. Riprova.";
-      if (error.code === 'permission-denied') {
-        errorMessage = "Errore di permessi. Impossibile inviare la richiesta in questo momento.";
+
+      // Dopo il salvataggio della richiesta, prova a creare/aggiornare il cliente
+      if (data.email_cliente && data.email_cliente.trim() !== "") {
+        console.log("[RichiediInterventoForm] Attempting auto client creation for email:", data.email_cliente, "and company ID:", data.id_azienda);
+        const clientiRef = collection(db, "clienti");
+        // Query per cercare un cliente esistente con la stessa email E id_azienda
+        const q = query(clientiRef, where("id_azienda", "==", data.id_azienda), where("email", "==", data.email_cliente));
+        
+        try {
+          const clienteSnapshot = await getDocs(q);
+          console.log("[RichiediInterventoForm] Existing client query snapshot empty:", clienteSnapshot.empty);
+
+          if (clienteSnapshot.empty) { // Cliente non trovato, crealo
+            const newClientData = {
+              id_azienda: data.id_azienda,
+              nome_completo: data.nome_cliente,
+              email: data.email_cliente,
+              telefono: data.telefono_cliente,
+              indirizzo: data.indirizzo_intervento, 
+              data_creazione: serverTimestamp(),
+              note_interne: `Cliente creato automaticamente dalla richiesta inviata il ${new Date().toLocaleDateString()}.`
+            };
+            console.log("[RichiediInterventoForm] Creating new client with data:", JSON.stringify(newClientData, null, 2));
+            await addDoc(clientiRef, newClientData);
+            console.log("[RichiediInterventoForm] New client created automatically:", data.email_cliente);
+          } else {
+            console.log("[RichiediInterventoForm] Client already exists:", data.email_cliente, "Doc ID:", clienteSnapshot.docs[0].id);
+            // Qui potresti decidere di aggiornare l'indirizzo o il telefono del cliente esistente se necessario
+          }
+        } catch (clientError) {
+          console.error("[RichiediInterventoForm] Error during automatic client creation/check:", clientError);
+          if (clientError instanceof Error && 'code' in clientError) {
+            console.error("Firestore Error Code (client creation):", (clientError as any).code, "Message:", (clientError as any).message);
+          }
+        }
+      } else {
+        console.log("[RichiediInterventoForm] Skipping auto client creation: email_cliente not provided or empty.");
+      }
+
+    } catch (error) {
+      console.error("[RichiediInterventoForm] Errore durante l'invio della richiesta:", error);
+      if (error instanceof Error && 'code' in error) {
+        console.error("Firestore Error Code (request creation):", (error as any).code, "Message:", (error as any).message);
       }
       toast({
         title: "Errore Invio Richiesta",
-        description: errorMessage,
+        description: "Si è verificato un errore durante l'invio della tua richiesta. Riprova più tardi.",
         variant: "destructive",
       });
     } finally {
@@ -176,10 +167,10 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
   }
 
   return (
-    <Card className="max-w-2xl mx-auto shadow-lg">
-      <CardHeader>
-        <CardTitle className="text-center text-2xl">Richiedi un Intervento</CardTitle>
-        <CardDescription className="text-center">
+    <Card className="w-full max-w-2xl mx-auto shadow-xl">
+      <CardHeader className="text-center">
+        <CardTitle className="text-2xl md:text-3xl">Richiedi un Intervento</CardTitle>
+        <CardDescription>
           Compila i campi per inviare una richiesta {companyDisplayName === "la tua azienda di fiducia" ? "alla tua azienda di fiducia" : `a ${companyDisplayName}`}. Verrai ricontattato al più presto.
         </CardDescription>
       </CardHeader>
@@ -187,38 +178,38 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <FormField
+              <FormField
                 control={form.control}
                 name="nome_cliente"
                 render={({ field }) => (
-                    <FormItem>
+                  <FormItem>
                     <FormLabel>Nome e Cognome <span className="text-destructive">*</span></FormLabel>
                     <FormControl>
-                        <div className="relative">
+                      <div className="relative">
                         <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input placeholder="Es: Mario Rossi" {...field} className="pl-10" />
-                        </div>
+                      </div>
                     </FormControl>
                     <FormMessage />
-                    </FormItem>
+                  </FormItem>
                 )}
-                />
-                <FormField
+              />
+              <FormField
                 control={form.control}
                 name="telefono_cliente"
                 render={({ field }) => (
-                    <FormItem>
+                  <FormItem>
                     <FormLabel>Numero di Telefono <span className="text-destructive">*</span></FormLabel>
                     <FormControl>
-                        <div className="relative">
+                      <div className="relative">
                         <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input type="tel" placeholder="Es: 3331234567" {...field} className="pl-10" />
-                        </div>
+                      </div>
                     </FormControl>
                     <FormMessage />
-                    </FormItem>
+                  </FormItem>
                 )}
-                />
+              />
             </div>
 
             <FormField
@@ -237,7 +228,7 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 </FormItem>
               )}
             />
-            
+
             <FormField
               control={form.control}
               name="indirizzo_intervento"
@@ -262,12 +253,12 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Giorno Preferito <span className="text-destructive">*</span></FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value} >
                       <FormControl>
-                        <div className="relative">
+                         <div className="relative">
                           <CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                           <SelectTrigger className="pl-10">
-                            <SelectValue placeholder="Seleziona un giorno..." />
+                              <SelectValue placeholder="Seleziona un giorno..." />
                           </SelectTrigger>
                         </div>
                       </FormControl>
@@ -287,12 +278,12 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Fascia Oraria Preferita <span className="text-destructive">*</span></FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value} >
                       <FormControl>
                         <div className="relative">
                           <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                           <SelectTrigger className="pl-10">
-                            <SelectValue placeholder="Seleziona una fascia oraria..." />
+                              <SelectValue placeholder="Seleziona una fascia oraria..." />
                           </SelectTrigger>
                         </div>
                       </FormControl>
@@ -332,7 +323,7 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 <FormItem>
                   <FormLabel>Note Aggiuntive (Opzionale)</FormLabel>
                   <FormControl>
-                    <div className="relative">
+                     <div className="relative">
                       <StickyNote className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Textarea
                         placeholder="Fornisci dettagli aggiuntivi utili per l'intervento..."
@@ -359,3 +350,4 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
     </Card>
   );
 }
+
