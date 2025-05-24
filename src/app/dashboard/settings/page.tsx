@@ -16,7 +16,7 @@ import { useEffect, useState, useRef } from "react";
 import { auth, db, storage } from "@/lib/firebase";
 import { onAuthStateChanged, updateProfile, type User as FirebaseUser } from "firebase/auth";
 import { doc, getDoc, setDoc, query, where, collection, getDocs } from "firebase/firestore";
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+// import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // Commentato perché non più usato
 import { useToast } from "@/hooks/use-toast";
 import {
   Form,
@@ -68,8 +68,8 @@ export default function SettingsPage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSlugManuallyEditedCompany, setIsSlugManuallyEditedCompany] = useState(false);
   
-  const logoFileInputRef = useRef<HTMLInputElement>(null);
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  // const logoFileInputRef = useRef<HTMLInputElement>(null); // Commentato perché non più usato
+  // const [isUploadingLogo, setIsUploadingLogo] = useState(false); // Commentato perché non più usato
 
   const companyForm = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
@@ -145,62 +145,7 @@ export default function SettingsPage() {
     }
   }, [companyNameValue, companyForm, isSlugManuallyEditedCompany]);
 
-  const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!currentUser) {
-      toast({ title: "Errore", description: "Utente non autenticato.", variant: "destructive" });
-      return;
-    }
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) { // Limite 5MB
-      toast({ title: "File troppo grande", description: "Il logo non deve superare i 5MB.", variant: "destructive" });
-      return;
-    }
-    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
-      toast({ title: "Formato non supportato", description: "Carica un file JPG, PNG, GIF o WEBP.", variant: "destructive" });
-      return;
-    }
-
-    setIsUploadingLogo(true);
-    try {
-      const logoStoragePath = `logos/${currentUser.uid}/${file.name}`;
-      console.log(`Attempting to upload logo to: ${logoStoragePath}`);
-      const logoUploadRef = storageRef(storage, logoStoragePath);
-      const uploadTask = uploadBytesResumable(logoUploadRef, file);
-
-      uploadTask.on('state_changed',
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          console.log('Upload is ' + progress + '% done');
-        },
-        (error) => {
-          console.error("Errore durante l'upload del logo (uploadTask.on error):", error.code, error.message, error);
-          toast({ title: "Errore Upload Logo", description: `Impossibile caricare il logo: ${error.message}. Controlla i permessi di Firebase Storage.`, variant: "destructive" });
-          setIsUploadingLogo(false);
-        },
-        async () => {
-          try {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            console.log("Logo caricato, URL:", downloadURL);
-            companyForm.setValue("logoUrl", downloadURL, { shouldValidate: true, shouldDirty: true });
-            setCompanyData(prev => ({ ...prev, logoUrl: downloadURL }));
-            toast({ title: "Logo Caricato!", description: "Il nuovo logo è stato caricato. Salva le modifiche per applicarlo." });
-          } catch (downloadError) {
-            console.error("Errore ottenimento Download URL:", downloadError);
-            toast({ title: "Errore Post-Upload", description: "Logo caricato ma impossibile ottenere URL.", variant: "destructive" });
-          } finally {
-            setIsUploadingLogo(false);
-          }
-        }
-      );
-    } catch (error) {
-      console.error("Errore durante l'avvio dell'upload del logo:", error);
-      toast({ title: "Errore Upload", description: "Si è verificato un errore imprevisto durante il caricamento.", variant: "destructive" });
-      setIsUploadingLogo(false); // Assicura che lo stato di caricamento sia resettato
-    }
-  };
-
+  // handleLogoFileChange è stata rimossa perché la funzionalità di upload è disabilitata
 
   async function onSubmitCompany(data: CompanyFormValues) {
     if (!currentUser) {
@@ -337,21 +282,23 @@ export default function SettingsPage() {
                       />
                       <AvatarFallback>{(companyForm.getValues("nome") || "L").substring(0,1).toUpperCase()}</AvatarFallback>
                     </Avatar>
+                    {/* Input file rimosso, non più necessario per ora 
                     <input
                         type="file"
                         ref={logoFileInputRef}
                         onChange={handleLogoFileChange}
                         accept="image/png, image/jpeg, image/gif, image/webp"
                         className="hidden"
-                    />
+                    /> */}
                     <Button 
                         variant="outline" 
                         type="button" 
-                        onClick={() => logoFileInputRef.current?.click()}
-                        disabled={isUploadingLogo || isSavingCompany}
+                        disabled // Reso il pulsante disabilitato
+                        // onClick={() => logoFileInputRef.current?.click()} // Rimosso onClick
+                        // disabled={isUploadingLogo || isSavingCompany} // Rimosso disabled condizionale
                     >
-                        {isUploadingLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                        {isUploadingLogo ? "Caricamento..." : "Cambia Logo"}
+                        {/* Icona Upload e Loader rimossi, testo aggiornato */}
+                        Cambia Logo (Prossimamente)
                     </Button>
                   </div>
                   <Separator />
@@ -363,7 +310,7 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Nome Azienda</FormLabel>
                           <FormControl>
-                            <Input {...field} disabled={isSavingCompany || isUploadingLogo} />
+                            <Input {...field} disabled={isSavingCompany} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -376,7 +323,7 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Email Contatto Aziendale</FormLabel>
                           <FormControl>
-                            <Input type="email" {...field} disabled={isSavingCompany || isUploadingLogo} placeholder="info@azienda.com"/>
+                            <Input type="email" {...field} disabled={isSavingCompany} placeholder="info@azienda.com"/>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -395,7 +342,7 @@ export default function SettingsPage() {
                                 placeholder="es: idraulica-rossi"
                                 {...field}
                                 className="pl-10"
-                                disabled={isSavingCompany || isUploadingLogo}
+                                disabled={isSavingCompany}
                                 onBlur={(e) => {
                                     const manualSlug = generateSlug(e.target.value);
                                     if (e.target.value.trim() === "") { 
@@ -434,7 +381,7 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Telefono</FormLabel>
                           <FormControl>
-                            <Input type="tel" {...field} disabled={isSavingCompany || isUploadingLogo} />
+                            <Input type="tel" {...field} disabled={isSavingCompany} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -447,14 +394,14 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Indirizzo Completo</FormLabel>
                           <FormControl>
-                            <Input {...field} disabled={isSavingCompany || isUploadingLogo} placeholder="Via Roma 1, 20121 Milano MI"/>
+                            <Input {...field} disabled={isSavingCompany} placeholder="Via Roma 1, 20121 Milano MI"/>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                   </div>
-                  <Button type="submit" disabled={isSavingCompany || isUploadingLogo} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                  <Button type="submit" disabled={isSavingCompany} className="bg-accent hover:bg-accent/90 text-accent-foreground">
                     {isSavingCompany && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Salva Modifiche Azienda
                   </Button>
@@ -557,3 +504,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    
