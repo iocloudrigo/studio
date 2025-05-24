@@ -7,32 +7,42 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect, type FC } from "react";
-// Assicurati che questa interfaccia sia coerente con quella usata nelle pagine
-// Se hai un'interfaccia ClientRequest globale, potresti importarla
+
+import { Timestamp, serverTimestamp } from "firebase/firestore";
+import { format } from "date-fns";
+import { Loader2 } from "lucide-react";
+
+// Interfaccia per i dati della richiesta nel pannello
 export interface RequestSheetData {
   id: string;
-  customer: string; 
-  service: string;  
-  status: string;   
-  created_at?: firebase.firestore.Timestamp | Date; 
+  customer: string;
+  service: string;
+  status: string;
+  created_at?: Timestamp | Date;
   note_aggiuntive?: string;
   indirizzo_intervento?: string;
   telefono_cliente?: string;
-  email_cliente?: string; // Aggiunto
+  email_cliente?: string;
   giorno_preferito?: string;
   fascia_oraria?: string;
+  completata_da_collaboratore_id?: string;
+  completata_da_collaboratore_nome?: string;
+  data_completamento?: Timestamp | Date;
 }
 
+// Interfaccia per i dati del collaboratore attivo da localStorage
+interface ActiveCollaborator {
+  id: string;
+  nome_completo: string;
+}
+const LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY = "activeIncastroCollaborator";
 
-import { Timestamp } from "firebase/firestore"; // Importa Timestamp
-import { format } from "date-fns";
-import { Loader2 } from "lucide-react";
 
 interface RequestDetailsSheetProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  request: RequestSheetData | null; // Usa l'interfaccia aggiornata
-  onUpdateRequestStatus: (requestId: string, newStatus: string) => Promise<void>;
+  request: RequestSheetData | null;
+  onUpdateRequestStatus: (requestId: string, newStatus: string, additionalData?: Record<string, any>) => Promise<void>;
 }
 
 const statusOptions = [
@@ -59,26 +69,51 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
   const handleSave = async () => {
     if (!selectedStatus || selectedStatus === request.status) return;
     setIsSaving(true);
+    let additionalData: Record<string, any> = {};
+
+    if (selectedStatus === "completata") {
+      const storedActiveCollaborator = localStorage.getItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
+      if (storedActiveCollaborator) {
+        try {
+          const activeCollaborator: ActiveCollaborator = JSON.parse(storedActiveCollaborator);
+          additionalData.completata_da_collaboratore_id = activeCollaborator.id;
+          additionalData.completata_da_collaboratore_nome = activeCollaborator.nome_completo;
+          additionalData.data_completamento = serverTimestamp();
+        } catch (e) {
+          console.error("Error parsing active collaborator from localStorage for completion:", e);
+        }
+      } else {
+        // Fallback se non c'è un utente attivo in localStorage (es. admin non ha selezionato)
+        // Potresti voler mettere un nome di default o l'ID dell'admin principale qui.
+        // Per ora, lasciamo che sia vuoto se non trovato.
+        console.warn("Nessun collaboratore attivo trovato in localStorage per marcare la richiesta come completata.");
+      }
+    } else {
+        // Se lo stato cambia da "completata" a qualcos'altro, potremmo voler rimuovere i campi di completamento.
+        // Oppure lasciarli per storico. Per ora li lascio.
+        // Se si vuole rimuoverli, si aggiungerebbe:
+        // additionalData.completata_da_collaboratore_id = deleteField();
+        // additionalData.completata_da_collaboratore_nome = deleteField();
+        // additionalData.data_completamento = deleteField();
+        // Ma questo richiede importare deleteField da firebase/firestore
+    }
+
+
     try {
-      await onUpdateRequestStatus(request.id, selectedStatus);
-      // Toast for success is handled by parent
-      onOpenChange(false); 
+      await onUpdateRequestStatus(request.id, selectedStatus, additionalData);
+      onOpenChange(false);
     } catch (error) {
-      // Error toast is handled by parent
       console.error("Error updating status from sheet:", error);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const formatDate = (dateValue: Timestamp | Date | undefined | string) => {
+  const formatDate = (dateValue?: Timestamp | Date | string) => {
     if (!dateValue) return "N/D";
-    if (typeof dateValue === 'string') { 
-        try {
-            return format(new Date(dateValue), "dd/MM/yyyy HH:mm");
-        } catch (e) {
-            return dateValue; 
-        }
+    if (typeof dateValue === 'string') {
+        try { return format(new Date(dateValue), "dd/MM/yyyy HH:mm"); }
+        catch (e) { return dateValue; }
     }
     try {
       const date = (dateValue instanceof Timestamp) ? dateValue.toDate() : dateValue;
@@ -97,7 +132,7 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
           <SheetDescription>Visualizza i dettagli e aggiorna lo stato della richiesta.</SheetDescription>
         </SheetHeader>
         <div className="p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
             <div><p className="font-medium text-muted-foreground">ID Richiesta:</p><p className="break-all">{request.id}</p></div>
             <div><p className="font-medium text-muted-foreground">Stato Attuale:</p><p className="capitalize">{request.status.replace("_", " ")}</p></div>
             <div><p className="font-medium text-muted-foreground">Data Creazione:</p><p>{formatDate(request.created_at)}</p></div>
@@ -120,6 +155,15 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
               />
             </div>
           )}
+
+          {request.status === "completata" && request.completata_da_collaboratore_nome && (
+            <div className="pt-4 border-t mt-4 text-sm">
+              <p className="font-medium text-muted-foreground">Dettagli Completamento:</p>
+              <p>Completata da: {request.completata_da_collaboratore_nome}</p>
+              {request.data_completamento && <p>Data: {formatDate(request.data_completamento)}</p>}
+            </div>
+          )}
+
 
           <div className="space-y-2 pt-4 border-t">
             <Label htmlFor="status-select" className="text-base font-semibold">Modifica Stato Richiesta</Label>
@@ -150,3 +194,5 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
     </Sheet>
   );
 }
+
+    

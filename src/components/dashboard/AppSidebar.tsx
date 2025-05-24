@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Logo } from "@/components/shared/Logo";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation"; // useRouter è già importato
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   FileText,
@@ -30,13 +30,30 @@ import {
   ChevronUp,
   LogOut,
   Archive,
+  User as UserIcon, // Aggiunta icona User
 } from "lucide-react";
 import { Button } from "../ui/button";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { signOut, onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator as DropdownMenuSeparatorItem, // Rinomina per evitare conflitto
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import type { Collaborator } from "@/app/dashboard/settings/page"; // Importa tipo Collaborator
+
+interface ActiveCollaborator {
+  id: string;
+  nome_completo: string;
+}
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -55,12 +72,101 @@ const navItems = [
   { href: "/dashboard/settings", label: "Impostazioni", icon: Settings },
 ];
 
+const LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY = "activeIncastroCollaborator";
+
 export function AppSidebar() {
-  const currentPathname = usePathname(); // Chiamato una volta qui
+  const currentPathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
   const { state: sidebarState, isMobile } = useSidebar();
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
+
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [companyId, setCompanyId] = useState<string | null>(null);
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [activeCollaborator, setActiveCollaborator] = useState<ActiveCollaborator | null>(null);
+  const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser(user);
+        setCompanyId(user.uid);
+      } else {
+        setCurrentUser(null);
+        setCompanyId(null);
+        setCollaborators([]);
+        setActiveCollaborator(null);
+        localStorage.removeItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const fetchCollaborators = useCallback(async (currentCompanyId: string) => {
+    if (!currentCompanyId) return;
+    setIsLoadingCollaborators(true);
+    try {
+      const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", currentCompanyId), orderBy("data_creazione", "desc"));
+      const querySnapshot = await getDocs(q);
+      const fetchedCollaborators = querySnapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      } as Collaborator));
+      setCollaborators(fetchedCollaborators);
+
+      // Load active collaborator from localStorage or set default
+      const storedActiveCollaborator = localStorage.getItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
+      if (storedActiveCollaborator) {
+        try {
+          const parsedCollaborator: ActiveCollaborator = JSON.parse(storedActiveCollaborator);
+          // Check if stored collaborator is still valid
+          if (fetchedCollaborators.some(c => c.id === parsedCollaborator.id)) {
+            setActiveCollaborator(parsedCollaborator);
+          } else {
+            setDefaultActiveCollaborator(fetchedCollaborators, currentUser);
+          }
+        } catch (e) {
+          console.error("Error parsing active collaborator from localStorage", e);
+          setDefaultActiveCollaborator(fetchedCollaborators, currentUser);
+        }
+      } else {
+        setDefaultActiveCollaborator(fetchedCollaborators, currentUser);
+      }
+
+    } catch (error) {
+      console.error("Errore nel caricare i collaboratori:", error);
+      toast({ title: "Errore Caricamento Collaboratori", description: "Impossibile caricare l'elenco dei collaboratori per il selettore.", variant: "destructive" });
+    } finally {
+      setIsLoadingCollaborators(false);
+    }
+  }, [toast, currentUser]);
+
+  const setDefaultActiveCollaborator = (collaboratorList: Collaborator[], user: FirebaseUser | null) => {
+    if (user && collaboratorList.length > 0) {
+      const adminCollaborator = collaboratorList.find(c => c.email === user.email && c.ruolo === "Amministratore");
+      if (adminCollaborator) {
+        const defaultActive: ActiveCollaborator = { id: adminCollaborator.id, nome_completo: adminCollaborator.nome_completo };
+        setActiveCollaborator(defaultActive);
+        localStorage.setItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY, JSON.stringify(defaultActive));
+      } else if (collaboratorList.length > 0) { // Fallback to the first collaborator if admin not found
+        const firstCollaborator = collaboratorList[0];
+        const fallbackActive: ActiveCollaborator = { id: firstCollaborator.id, nome_completo: firstCollaborator.nome_completo };
+        setActiveCollaborator(fallbackActive);
+        localStorage.setItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY, JSON.stringify(fallbackActive));
+      }
+    } else {
+      setActiveCollaborator(null);
+      localStorage.removeItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
+    }
+  };
+
+  useEffect(() => {
+    if (companyId) {
+      fetchCollaborators(companyId);
+    }
+  }, [companyId, fetchCollaborators]);
+
 
   useEffect(() => {
     if (sidebarState === "collapsed" || isMobile) {
@@ -81,6 +187,7 @@ export function AppSidebar() {
         title: "Logout Effettuato",
         description: "Sei stato disconnesso con successo.",
       });
+      localStorage.removeItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY);
       router.push("/");
     } catch (error) {
       console.error("Errore durante il logout:", error);
@@ -89,6 +196,16 @@ export function AppSidebar() {
         description: "Impossibile effettuare il logout. Riprova.",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleActiveCollaboratorChange = (collaboratorId: string) => {
+    const selected = collaborators.find(c => c.id === collaboratorId);
+    if (selected) {
+      const newActiveCollaborator: ActiveCollaborator = { id: selected.id, nome_completo: selected.nome_completo };
+      setActiveCollaborator(newActiveCollaborator);
+      localStorage.setItem(LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY, JSON.stringify(newActiveCollaborator));
+      toast({ title: "Utente Attivo Cambiato", description: `Ora stai operando come ${selected.nome_completo}.` });
     }
   };
 
@@ -118,7 +235,7 @@ export function AppSidebar() {
                       sidebarState === "collapsed" && "!size-8 !p-2",
                       item.subItems.some(sub => {
                         const currentFullUrl = currentPathname + (typeof window !== "undefined" ? window.location.search : "");
-                        return currentFullUrl === sub.href || (currentPathname === '/dashboard/requests' && sub.href.startsWith('/dashboard/requests?statusFilter='));
+                        return currentFullUrl === sub.href || (currentPathname === '/dashboard/requests' && sub.href.startsWith('/dashboard/requests?statusFilter=') && currentFullUrl === sub.href);
                       }) && "bg-sidebar-accent text-sidebar-accent-foreground"
                     )}
                     onClick={() => toggleSubmenu(item.label)}
@@ -135,7 +252,7 @@ export function AppSidebar() {
                     <SidebarMenuSub>
                       {item.subItems.map((subItem) => {
                         const currentFullUrl = currentPathname + (typeof window !== "undefined" ? window.location.search : "");
-                        const isActive = currentFullUrl === subItem.href || (currentPathname === '/dashboard/requests' && subItem.href.startsWith('/dashboard/requests?statusFilter=') && currentFullUrl === subItem.href);
+                        const isActive = currentFullUrl === subItem.href;
                         
                         return (
                           <SidebarMenuSubItem key={subItem.href}>
@@ -170,9 +287,46 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
       
-      <SidebarSeparator />
       <SidebarFooter className="p-2 border-t">
         <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  tooltip={sidebarState === "collapsed" ? (activeCollaborator?.nome_completo || "Seleziona Utente") : undefined}
+                  className="w-full"
+                  variant="ghost"
+                  aria-label="Seleziona utente attivo"
+                >
+                  <UserIcon />
+                  {sidebarState === "expanded" && (
+                    <span className="truncate">
+                      {isLoadingCollaborators ? "Caricamento..." : activeCollaborator?.nome_completo || "Seleziona Utente"}
+                    </span>
+                  )}
+                   {sidebarState === "expanded" && <ChevronDown className="h-4 w-4 ml-auto opacity-50" />}
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56 ml-2 mb-1" side="top" align="start">
+                <DropdownMenuLabel>Opera come:</DropdownMenuLabel>
+                <DropdownMenuSeparatorItem />
+                {isLoadingCollaborators ? (
+                  <DropdownMenuRadioItem value="loading" disabled>Caricamento utenti...</DropdownMenuRadioItem>
+                ) : collaborators.length > 0 ? (
+                  <DropdownMenuRadioGroup value={activeCollaborator?.id || ""} onValueChange={handleActiveCollaboratorChange}>
+                    {collaborators.map((collaborator) => (
+                      <DropdownMenuRadioItem key={collaborator.id} value={collaborator.id} className="cursor-pointer">
+                        {collaborator.nome_completo} ({collaborator.ruolo})
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                ) : (
+                  <DropdownMenuRadioItem value="no-users" disabled>Nessun collaboratore</DropdownMenuRadioItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+          <SidebarSeparator />
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={handleLogout}
@@ -188,3 +342,5 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+
+    

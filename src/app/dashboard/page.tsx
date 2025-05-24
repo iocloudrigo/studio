@@ -21,18 +21,9 @@ interface DashboardStats {
   inProgressRequests: number | null;
 }
 
-export interface RecentRequest {
-  id: string;
-  customer: string;
-  service: string;
-  status: string;
-  created_at?: Timestamp;
-  note_aggiuntive?: string;
-  indirizzo_intervento?: string;
-  telefono_cliente?: string;
-  email_cliente?: string;
-  giorno_preferito?: string;
-  fascia_oraria?: string;
+export interface RecentRequest extends RequestSheetData { // Estende RequestSheetData
+  // Eventuali campi aggiuntivi specifici per RecentRequest possono essere aggiunti qui
+  // ma la maggior parte dovrebbe essere in RequestSheetData
 }
 
 export default function DashboardPage() {
@@ -96,7 +87,7 @@ export default function DashboardPage() {
         setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
       } catch (error) {
         console.error("Error fetching active requests stats:", error);
-        toast({ title: "Errore Richieste Attive", description: "Impossibile caricare il conteggio delle richieste attive.", variant: "destructive" });
+        toast({ title: "Errore Conteggio Richieste Attive", description: "Impossibile caricare il conteggio delle richieste attive.", variant: "destructive" });
         setStats(prev => ({ ...prev, activeRequests: 0 }));
       } finally {
         setLoadingStats(prev => ({ ...prev, activeRequests: false }));
@@ -114,7 +105,7 @@ export default function DashboardPage() {
         setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
       } catch (error) {
         console.error("Error fetching assigned requests stats:", error);
-        toast({ title: "Errore Richieste Assegnate", description: "Impossibile caricare il conteggio delle richieste assegnate.", variant: "destructive" });
+        toast({ title: "Errore Conteggio Richieste Assegnate", description: "Impossibile caricare il conteggio delle richieste assegnate.", variant: "destructive" });
         setStats(prev => ({ ...prev, assignedRequests: 0 }));
       } finally {
         setLoadingStats(prev => ({ ...prev, assignedRequests: false }));
@@ -132,7 +123,7 @@ export default function DashboardPage() {
         setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
       } catch (error) {
         console.error("Error fetching in-progress requests stats:", error);
-        toast({ title: "Errore Richieste In Corso", description: "Impossibile caricare il conteggio delle richieste in corso.", variant: "destructive" });
+        toast({ title: "Errore Conteggio Richieste In Corso", description: "Impossibile caricare il conteggio delle richieste in corso.", variant: "destructive" });
         setStats(prev => ({ ...prev, inProgressRequests: 0 }));
       } finally {
         setLoadingStats(prev => ({ ...prev, inProgressRequests: false }));
@@ -162,6 +153,9 @@ export default function DashboardPage() {
             email_cliente: data.email_cliente || "",
             giorno_preferito: data.giorno_preferito || "",
             fascia_oraria: data.fascia_oraria || "",
+            completata_da_collaboratore_id: data.completata_da_collaboratore_id,
+            completata_da_collaboratore_nome: data.completata_da_collaboratore_nome,
+            data_completamento: data.data_completamento as Timestamp | undefined,
           } as RecentRequest;
         });
         setRecentRequests(fetchedRequests);
@@ -177,22 +171,24 @@ export default function DashboardPage() {
     fetchDashboardData();
   }, [companyId, toast]);
 
-  const handleUpdateRequestStatus = async (requestId: string, newStatus: string) => {
+  const handleUpdateRequestStatus = async (requestId: string, newStatus: string, additionalData: Record<string, any> = {}) => {
     if (!companyId) {
       toast({ title: "Errore", description: "ID azienda non trovato.", variant: "destructive" });
       return;
     }
     try {
       const requestDocRef = doc(db, "richieste_clienti", requestId);
-      await updateDoc(requestDocRef, { stato: newStatus });
+      await updateDoc(requestDocRef, { stato: newStatus, ...additionalData });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
+      // Aggiorna lo stato locale delle richieste recenti
       setRecentRequests(prevRequests =>
         prevRequests.map(req =>
-          req.id === requestId ? { ...req, status: newStatus } : req
+          req.id === requestId ? { ...req, status: newStatus, ...additionalData } : req
         )
       );
 
+      // Ricarica le statistiche
       if (companyId) {
         setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true }));
         try {
@@ -349,20 +345,9 @@ export default function DashboardPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => {
-                              const sheetData: RequestSheetData = {
-                                id: req.id,
-                                customer: req.customer,
-                                service: req.service,
-                                status: req.status,
-                                created_at: req.created_at,
-                                note_aggiuntive: req.note_aggiuntive,
-                                indirizzo_intervento: req.indirizzo_intervento,
-                                telefono_cliente: req.telefono_cliente,
-                                email_cliente: req.email_cliente,
-                                giorno_preferito: req.giorno_preferito,
-                                fascia_oraria: req.fascia_oraria,
-                              };
-                              setSelectedRequest(sheetData);
+                              // req è già del tipo corretto (RecentRequest)
+                              // e RecentRequest estende RequestSheetData
+                              setSelectedRequest(req);
                               setIsSheetOpen(true);
                             }}
                           >
@@ -419,3 +404,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    

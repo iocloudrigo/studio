@@ -19,26 +19,16 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet";
 import { useToast } from "@/hooks/use-toast";
-import { useSearchParams } from "next/navigation"; // Import useSearchParams
+import { useSearchParams } from "next/navigation"; 
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc } from "firebase/firestore";
 import { format } from 'date-fns';
 
-export interface ClientRequest {
-  id: string;
-  id_azienda: string;
-  nome_cliente: string;
-  tipo_servizio: string;
-  stato: string;
-  created_at: Timestamp;
-  indirizzo_intervento?: string;
-  telefono_cliente?: string;
-  email_cliente?: string;
-  giorno_preferito?: string;
-  fascia_oraria?: string;
-  note_aggiuntive?: string;
+export interface ClientRequest extends RequestSheetData { // Estende RequestSheetData
+  id_azienda: string; // Aggiunto questo campo che era mancante nella definizione ma usato
+  // Altri campi sono ereditati da RequestSheetData
 }
 
 const ALL_STATUSES = ["in attesa", "assegnata", "programmata", "in corso", "completata", "annullata"];
@@ -47,7 +37,7 @@ export default function AllRequestsPage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const { toast } = useToast();
-  const searchParams = useSearchParams(); // Get searchParams
+  const searchParams = useSearchParams(); 
 
   const [allRequests, setAllRequests] = useState<ClientRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -75,11 +65,14 @@ export default function AllRequestsPage() {
     const statusFilterFromUrl = searchParams.get('statusFilter');
     if (statusFilterFromUrl) {
       const statuses = statusFilterFromUrl.split(',').map(s => decodeURIComponent(s.trim()));
-      // Ensure statuses are valid before setting
       const validStatuses = statuses.filter(s => ALL_STATUSES.includes(s));
       if (validStatuses.length > 0) {
         setActiveStatusFilters(validStatuses);
+      } else {
+        setActiveStatusFilters([]); // Reset se i filtri URL non sono validi
       }
+    } else {
+        setActiveStatusFilters([]); // Nessun filtro URL, resetta
     }
   }, [searchParams]);
 
@@ -105,9 +98,9 @@ export default function AllRequestsPage() {
           return {
             id: docSnap.id,
             id_azienda: data.id_azienda,
-            nome_cliente: data.nome_cliente || "N/D",
-            tipo_servizio: data.tipo_servizio || "N/D",
-            stato: data.stato || "N/D",
+            customer: data.nome_cliente || "N/D", // nome_cliente invece di customer
+            service: data.tipo_servizio || "N/D", // tipo_servizio invece di service
+            status: data.stato || "N/D", // stato invece di status
             created_at: data.created_at as Timestamp,
             indirizzo_intervento: data.indirizzo_intervento,
             telefono_cliente: data.telefono_cliente,
@@ -115,6 +108,9 @@ export default function AllRequestsPage() {
             giorno_preferito: data.giorno_preferito,
             fascia_oraria: data.fascia_oraria,
             note_aggiuntive: data.note_aggiuntive,
+            completata_da_collaboratore_id: data.completata_da_collaboratore_id,
+            completata_da_collaboratore_nome: data.completata_da_collaboratore_nome,
+            data_completamento: data.data_completamento as Timestamp | undefined,
           } as ClientRequest;
         });
         setAllRequests(fetchedRequests);
@@ -139,43 +135,31 @@ export default function AllRequestsPage() {
     return allRequests.filter(req => {
       const matchesSearch = searchTerm === "" ||
         req.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.nome_cliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.tipo_servizio.toLowerCase().includes(searchTerm.toLowerCase());
+        req.customer.toLowerCase().includes(searchTerm.toLowerCase()) || // usa req.customer
+        req.service.toLowerCase().includes(searchTerm.toLowerCase()); // usa req.service
 
-      const matchesStatus = activeStatusFilters.length === 0 || activeStatusFilters.includes(req.stato);
+      const matchesStatus = activeStatusFilters.length === 0 || activeStatusFilters.includes(req.status); // usa req.status
 
       return matchesSearch && matchesStatus;
     });
   }, [allRequests, searchTerm, activeStatusFilters]);
 
   const handleOpenDetailsSheet = (request: ClientRequest) => {
-    const sheetData: RequestSheetData = {
-      id: request.id,
-      customer: request.nome_cliente,
-      service: request.tipo_servizio,
-      status: request.stato,
-      created_at: request.created_at,
-      indirizzo_intervento: request.indirizzo_intervento,
-      telefono_cliente: request.telefono_cliente,
-      email_cliente: request.email_cliente,
-      giorno_preferito: request.giorno_preferito,
-      fascia_oraria: request.fascia_oraria,
-      note_aggiuntive: request.note_aggiuntive,
-    };
-    setSelectedRequestForSheet(sheetData);
+    // request è già del tipo corretto (ClientRequest) che estende RequestSheetData
+    setSelectedRequestForSheet(request);
     setIsSheetOpen(true);
   };
 
-  const handleUpdateRequestStatusOnPage = async (requestId: string, newStatus: string) => {
+  const handleUpdateRequestStatusOnPage = async (requestId: string, newStatus: string, additionalData: Record<string, any> = {}) => {
     if (!companyId) return;
     try {
       const requestDocRef = doc(db, "richieste_clienti", requestId);
-      await updateDoc(requestDocRef, { stato: newStatus });
+      await updateDoc(requestDocRef, { stato: newStatus, ...additionalData });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
       setAllRequests(prevRequests =>
         prevRequests.map(req =>
-          req.id === requestId ? { ...req, stato: newStatus } : req
+          req.id === requestId ? { ...req, status: newStatus, ...additionalData } : req
         )
       );
     } catch (error) {
@@ -185,9 +169,10 @@ export default function AllRequestsPage() {
     }
   };
 
-  const formatDate = (timestamp?: Timestamp) => {
+  const formatDate = (timestamp?: Timestamp | Date) => {
     if (!timestamp) return 'N/D';
-    return format(timestamp.toDate(), 'dd/MM/yyyy HH:mm');
+    const date = (timestamp instanceof Timestamp) ? timestamp.toDate() : timestamp;
+    return format(date, 'dd/MM/yyyy HH:mm');
   };
 
   return (
@@ -273,26 +258,26 @@ export default function AllRequestsPage() {
                     {filteredRequests.map((req) => (
                       <tr key={req.id} className="border-b hover:bg-muted/50">
                         <td className="p-3 text-sm font-medium text-primary whitespace-nowrap">{req.id.substring(0, 8)}...</td>
-                        <td className="p-3 text-sm whitespace-nowrap">{req.nome_cliente}</td>
-                        <td className="p-3 text-sm">{req.tipo_servizio}</td>
+                        <td className="p-3 text-sm whitespace-nowrap">{req.customer}</td>
+                        <td className="p-3 text-sm">{req.service}</td>
                         <td className="p-3 text-sm whitespace-nowrap">
                           <Badge variant={
-                              req.stato === "completata" ? "default" :
-                              req.stato === "annullata" ? "destructive" :
-                              req.stato === "in attesa" ? "outline" :
+                              req.status === "completata" ? "default" :
+                              req.status === "annullata" ? "destructive" :
+                              req.status === "in attesa" ? "outline" :
                               "secondary"
                             }
                             className={
-                              req.stato === "completata" ? "bg-green-100 text-green-700 border-green-200" :
-                              req.stato === "annullata" ? "bg-red-100 text-red-700 border-red-200" :
-                              req.stato === "in attesa" ? "bg-orange-100 text-orange-700 border-orange-200" :
-                              req.stato === "assegnata" ? "bg-blue-100 text-blue-700 border-blue-200" :
-                              req.stato === "programmata" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
-                              req.stato === "in corso" ? "bg-indigo-100 text-indigo-700 border-indigo-200" :
+                              req.status === "completata" ? "bg-green-100 text-green-700 border-green-200" :
+                              req.status === "annullata" ? "bg-red-100 text-red-700 border-red-200" :
+                              req.status === "in attesa" ? "bg-orange-100 text-orange-700 border-orange-200" :
+                              req.status === "assegnata" ? "bg-blue-100 text-blue-700 border-blue-200" :
+                              req.status === "programmata" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
+                              req.status === "in corso" ? "bg-indigo-100 text-indigo-700 border-indigo-200" :
                               "bg-gray-100 text-gray-700 border-gray-200"
                             }
                           >
-                            {req.stato.charAt(0).toUpperCase() + req.stato.slice(1).replace("_", " ")}
+                            {req.status.charAt(0).toUpperCase() + req.status.slice(1).replace("_", " ")}
                           </Badge>
                         </td>
                         <td className="p-3 text-sm whitespace-nowrap">{formatDate(req.created_at)}</td>
@@ -328,3 +313,5 @@ export default function AllRequestsPage() {
     </div>
   );
 }
+
+    
