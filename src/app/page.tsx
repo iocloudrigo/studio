@@ -43,34 +43,24 @@ export default function LandingPage() {
 
   const pricingPlans = [
     {
-      name: "Starter",
-      price: "€ 299",
-      frequency: "/ anno",
-      description: "Ideale per iniziare e per piccole attività.",
-      features: ["Fino a 20 clienti", "Gestione richieste base", "Supporto email"],
-      cta: "Inizia con Starter",
+      name: "Mensile",
+      price: "€ 49",
+      frequency: "/ mese",
+      description: "Flessibilità totale, paga mese per mese.",
+      features: ["Tutte le funzionalità Incastro", "Gestione completa richieste", "Supporto clienti", "Aggiornamenti inclusi"],
+      cta: "Inizia con il Piano Mensile",
       href: "/register",
       highlight: false,
     },
     {
-      name: "Pro",
-      price: "€ 399",
-      frequency: "/ anno",
-      description: "Perfetto per aziende in crescita.",
-      features: ["Fino a 50 clienti", "Gestione richieste avanzata", "Suggerimenti AI", "Supporto prioritario"],
-      cta: "Scegli Pro",
-      href: "/register",
-      highlight: true,
-    },
-    {
-      name: "Elite",
+      name: "Annuale",
       price: "€ 499",
       frequency: "/ anno",
-      description: "La soluzione completa per grandi volumi.",
-      features: ["Clienti illimitati", "Tutte le funzionalità Pro", "Statistiche avanzate", "Supporto dedicato"],
-      cta: "Passa a Elite",
+      description: "Risparmia con il pagamento annuale.",
+      features: ["Tutte le funzionalità Incastro", "Gestione completa richieste", "Supporto clienti", "Aggiornamenti inclusi"],
+      cta: "Scegli il Piano Annuale",
       href: "/register",
-      highlight: false,
+      highlight: true, // Puoi scegliere di evidenziare il piano annuale
     },
   ];
 
@@ -284,10 +274,10 @@ export default function LandingPage() {
                 Piani Tariffari Semplici e Trasparenti
               </h2>
               <p className="mt-2 text-muted-foreground">
-                Scegli il piano annuale più adatto alle esigenze della tua attività.
+                Scegli l'opzione di pagamento più adatta alle tue esigenze. Tutte le funzionalità sono incluse.
               </p>
             </div>
-            <div className="grid gap-8 md:grid-cols-3 lg:gap-10">
+            <div className="grid gap-8 md:grid-cols-2 lg:max-w-3xl lg:mx-auto lg:gap-10">
               {pricingPlans.map((plan) => (
                 <div
                   key={plan.name}
@@ -298,7 +288,7 @@ export default function LandingPage() {
                   {plan.highlight && (
                     <div className="mb-4 text-center">
                       <span className="inline-block rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground">
-                        Più Popolare
+                        Consigliato
                       </span>
                     </div>
                   )}
@@ -323,7 +313,7 @@ export default function LandingPage() {
               ))}
             </div>
             <p className="mt-8 text-center text-sm text-muted-foreground">
-              Tutti i prezzi sono IVA esclusa.
+              Tutti i prezzi sono IVA esclusa. Nessun contratto a lungo termine, disdici quando vuoi (per il piano mensile).
             </p>
           </div>
         </section>
