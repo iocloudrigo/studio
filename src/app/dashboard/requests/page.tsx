@@ -1,3 +1,7 @@
+
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -11,25 +15,162 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { RequestDetailsSheet } from "@/components/dashboard/requests/RequestDetailsSheet";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock data for requests - replace with actual data fetching
-const mockRequests = [
-  { id: "REQ001", customer: "Laura Bianchi", service: "Riparazione perdita", technician: "Mario Rossi", status: "Assegnato", date: "2024-07-15", priority: "Alta" },
-  { id: "REQ002", customer: "Marco Verdi", service: "Installazione AC", technician: "Luigi Neri", status: "Completato", date: "2024-07-12", priority: "Media" },
-  { id: "REQ003", customer: "Giulia Neri", service: "Manutenzione caldaia", technician: "Anna Gialli", status: "In attesa", date: "2024-07-18", priority: "Bassa" },
-  { id: "REQ004", customer: "Paolo Serra", service: "Controllo impianto", technician: "-", status: "Nuova", date: "2024-07-20", priority: "Media" },
-];
+import { auth, db } from "@/lib/firebase";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc } from "firebase/firestore";
+import { format } from 'date-fns';
 
-export default function RequestsPage() {
-  // State for filters would go here, e.g., using React.useState
-  // For now, it's a static display
+export interface ClientRequest {
+  id: string;
+  id_azienda: string;
+  nome_cliente: string;
+  tipo_servizio: string;
+  stato: string;
+  created_at: Timestamp;
+  indirizzo_intervento?: string;
+  telefono_cliente?: string;
+  giorno_preferito?: string;
+  fascia_oraria?: string;
+  note_aggiuntive?: string;
+  // Aggiungi altri campi se necessario, es. tecnico_assegnato, priorita
+}
+
+// Definisci gli stati possibili come li usi in Firestore e per i filtri
+const ALL_STATUSES = ["in attesa", "assegnata", "programmata", "in corso", "completata", "annullata"];
+
+
+export default function AllRequestsPage() {
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [companyId, setCompanyId] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const [allRequests, setAllRequests] = useState<ClientRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
+
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [selectedRequestForSheet, setSelectedRequestForSheet] = useState<ClientRequest | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser(user);
+        setCompanyId(user.uid);
+      } else {
+        setCurrentUser(null);
+        setCompanyId(null);
+        setAllRequests([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!companyId) {
+      setIsLoading(false);
+      setAllRequests([]);
+      return;
+    }
+
+    const fetchRequests = async () => {
+      setIsLoading(true);
+      try {
+        const requestsQuery = query(
+          collection(db, "richieste_clienti"),
+          where("id_azienda", "==", companyId),
+          orderBy("created_at", "desc")
+        );
+        const querySnapshot = await getDocs(requestsQuery);
+        const fetchedRequests = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            id_azienda: data.id_azienda,
+            nome_cliente: data.nome_cliente || "N/D",
+            tipo_servizio: data.tipo_servizio || "N/D",
+            stato: data.stato || "N/D",
+            created_at: data.created_at as Timestamp,
+            indirizzo_intervento: data.indirizzo_intervento,
+            telefono_cliente: data.telefono_cliente,
+            giorno_preferito: data.giorno_preferito,
+            fascia_oraria: data.fascia_oraria,
+            note_aggiuntive: data.note_aggiuntive,
+          } as ClientRequest;
+        });
+        setAllRequests(fetchedRequests);
+      } catch (error) {
+        console.error("Error fetching requests:", error);
+        toast({ title: "Errore Caricamento Richieste", description: "Impossibile caricare l'elenco delle richieste.", variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchRequests();
+  }, [companyId, toast]);
+
+  const handleStatusFilterToggle = (status: string) => {
+    setActiveStatusFilters(prev =>
+      prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
+    );
+  };
+
+  const filteredRequests = useMemo(() => {
+    return allRequests.filter(req => {
+      const matchesSearch = searchTerm === "" ||
+        req.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        req.nome_cliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        req.tipo_servizio.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesStatus = activeStatusFilters.length === 0 || activeStatusFilters.includes(req.stato);
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [allRequests, searchTerm, activeStatusFilters]);
+
+  const handleOpenDetailsSheet = (request: ClientRequest) => {
+    setSelectedRequestForSheet(request);
+    setIsSheetOpen(true);
+  };
+  
+  const handleUpdateRequestStatusOnPage = async (requestId: string, newStatus: string) => {
+    if (!companyId) return;
+    try {
+      const requestDocRef = doc(db, "richieste_clienti", requestId);
+      await updateDoc(requestDocRef, { stato: newStatus });
+      toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
+      
+      // Update local state to reflect changes immediately
+      setAllRequests(prevRequests =>
+        prevRequests.map(req =>
+          req.id === requestId ? { ...req, stato: newStatus } : req
+        )
+      );
+      // No need to re-fetch all, local update is sufficient for filtering
+    } catch (error) {
+      console.error("Error updating request status:", error);
+      toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare lo stato della richiesta.", variant: "destructive" });
+      throw error;
+    }
+  };
+
+  const formatDate = (timestamp?: Timestamp) => {
+    if (!timestamp) return 'N/D';
+    return format(timestamp.toDate(), 'dd/MM/yyyy HH:mm');
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Gestione Richieste</h1>
-          <p className="text-muted-foreground">Visualizza, assegna e monitora tutte le richieste di intervento.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Tutte le Richieste</h1>
+          <p className="text-muted-foreground">Visualizza, filtra e gestisci tutte le richieste di intervento.</p>
         </div>
         <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
           <Link href="/dashboard/requests/new">
@@ -43,75 +184,104 @@ export default function RequestsPage() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex-1 relative">
                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-               <Input placeholder="Cerca per ID, cliente, servizio..." className="pl-10 w-full md:w-auto" />
+               <Input 
+                 placeholder="Cerca per ID, cliente, servizio..." 
+                 className="pl-10 w-full md:w-auto" 
+                 value={searchTerm}
+                 onChange={(e) => setSearchTerm(e.target.value)}
+               />
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="ml-auto">
-                  <Filter className="mr-2 h-4 w-4" /> Filtra
+                <Button variant="outline" className="ml-auto shrink-0">
+                  <Filter className="mr-2 h-4 w-4" /> Filtra per Stato ({activeStatusFilters.length > 0 ? activeStatusFilters.length : 'Tutti'})
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-[200px]">
                 <DropdownMenuLabel>Filtra per Stato</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {["Nuova", "In attesa", "Assegnato", "Completato", "Annullato"].map((status) => (
+                {ALL_STATUSES.map((status) => (
                   <DropdownMenuCheckboxItem
                     key={status}
-                    // checked={...} onCheckedChange={...}
+                    checked={activeStatusFilters.includes(status)}
+                    onCheckedChange={() => handleStatusFilterToggle(status)}
+                    className="capitalize"
                   >
-                    {status}
+                    {status.replace("_", " ")}
                   </DropdownMenuCheckboxItem>
                 ))}
+                 {activeStatusFilters.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full justify-start text-sm text-destructive hover:text-destructive"
+                      onClick={() => setActiveStatusFilters([])}
+                    >
+                      Rimuovi Filtri
+                    </Button>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </CardHeader>
         <CardContent>
-          {mockRequests.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">ID</th>
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Cliente</th>
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Servizio</th>
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Tecnico</th>
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Stato</th>
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Data Richiesta</th>
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Priorità</th>
-                    <th className="p-3 text-right text-sm font-semibold text-muted-foreground">Azioni</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mockRequests.map((req) => (
-                    <tr key={req.id} className="border-b hover:bg-muted/50">
-                      <td className="p-3 text-sm font-medium text-primary">{req.id}</td>
-                      <td className="p-3 text-sm">{req.customer}</td>
-                      <td className="p-3 text-sm">{req.service}</td>
-                      <td className="p-3 text-sm">{req.technician}</td>
-                      <td className="p-3 text-sm">
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          req.status === "Completato" ? "bg-green-100 text-green-700" :
-                          req.status === "Assegnato" ? "bg-blue-100 text-blue-700" :
-                          req.status === "In attesa" ? "bg-orange-100 text-orange-700" :
-                          req.status === "Nuova" ? "bg-purple-100 text-purple-700" :
-                          "bg-gray-100 text-gray-700"
-                        }`}>
-                          {req.status}
-                        </span>
-                      </td>
-                      <td className="p-3 text-sm">{req.date}</td>
-                      <td className="p-3 text-sm">{req.priority}</td>
-                      <td className="p-3 text-right text-sm">
-                        <Button variant="outline" size="sm" asChild>
-                          <Link href={`/dashboard/requests/${req.id}`}>Visualizza</Link>
-                        </Button>
-                      </td>
+          {isLoading ? (
+            <div className="text-center py-12 text-muted-foreground">Caricamento richieste...</div>
+          ) : filteredRequests.length > 0 ? (
+            <ScrollArea className="h-[calc(100vh-22rem)] lg:h-[calc(100vh-20rem)]"> {/* Adjust height as needed */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">ID Richiesta</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Cliente</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Servizio</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Data Creazione</th>
+                      <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filteredRequests.map((req) => (
+                      <tr key={req.id} className="border-b hover:bg-muted/50">
+                        <td className="p-3 text-sm font-medium text-primary whitespace-nowrap">{req.id.substring(0, 8)}...</td>
+                        <td className="p-3 text-sm whitespace-nowrap">{req.nome_cliente}</td>
+                        <td className="p-3 text-sm">{req.tipo_servizio}</td>
+                        <td className="p-3 text-sm whitespace-nowrap">
+                          <Badge variant={
+                              req.stato === "completata" ? "default" :
+                              req.stato === "annullata" ? "destructive" :
+                              req.stato === "in attesa" ? "outline" :
+                              "secondary" // per assegnata, programmata, in corso
+                            }
+                            className={
+                              req.stato === "completata" ? "bg-green-100 text-green-700 border-green-200" :
+                              req.stato === "annullata" ? "bg-red-100 text-red-700 border-red-200" :
+                              req.stato === "in attesa" ? "bg-orange-100 text-orange-700 border-orange-200" :
+                              req.stato === "assegnata" ? "bg-blue-100 text-blue-700 border-blue-200" :
+                              req.stato === "programmata" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
+                              req.stato === "in corso" ? "bg-indigo-100 text-indigo-700 border-indigo-200" :
+                              "bg-gray-100 text-gray-700 border-gray-200"
+                            }
+                          >
+                            {req.stato.charAt(0).toUpperCase() + req.stato.slice(1).replace("_", " ")}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-sm whitespace-nowrap">{formatDate(req.created_at)}</td>
+                        <td className="p-3 text-right text-sm whitespace-nowrap">
+                          <Button variant="outline" size="sm" onClick={() => handleOpenDetailsSheet(req)}>
+                            Dettagli
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </ScrollArea>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <FileText className="mx-auto h-16 w-16 mb-4" />
@@ -121,6 +291,26 @@ export default function RequestsPage() {
           )}
         </CardContent>
       </Card>
+      
+      {selectedRequestForSheet && (
+        <RequestDetailsSheet
+          isOpen={isSheetOpen}
+          onOpenChange={setIsSheetOpen}
+          request={{ // Map ClientRequest to RecentRequest format expected by Sheet
+            id: selectedRequestForSheet.id,
+            customer: selectedRequestForSheet.nome_cliente,
+            service: selectedRequestForSheet.tipo_servizio,
+            status: selectedRequestForSheet.stato,
+            created_at: selectedRequestForSheet.created_at,
+            indirizzo_intervento: selectedRequestForSheet.indirizzo_intervento,
+            telefono_cliente: selectedRequestForSheet.telefono_cliente,
+            giorno_preferito: selectedRequestForSheet.giorno_preferito,
+            fascia_oraria: selectedRequestForSheet.fascia_oraria,
+            note_aggiuntive: selectedRequestForSheet.note_aggiuntive,
+          }}
+          onUpdateRequestStatus={handleUpdateRequestStatusOnPage}
+        />
+      )}
     </div>
   );
 }
