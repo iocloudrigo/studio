@@ -224,10 +224,10 @@ export default function LandingPage() {
             <Accordion type="single" collapsible className="w-full max-w-2xl mx-auto">
               {faqItems.map((item) => (
                 <AccordionItem value={item.id} key={item.id}>
-                  <AccordionTrigger className="text-lg hover:no-underline">
+                  <AccordionTrigger className="text-lg font-semibold text-left hover:no-underline">
                     {item.question}
                   </AccordionTrigger>
-                  <AccordionContent className="text-base text-muted-foreground leading-relaxed">
+                  <AccordionContent className="text-base text-muted-foreground leading-relaxed pt-2 pb-4">
                     {item.answer}
                   </AccordionContent>
                 </AccordionItem>
