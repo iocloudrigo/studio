@@ -9,10 +9,11 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
 const LOGIN_ROUTE = '/';
-const REGISTER_ROUTE = '/register'; // Unified registration page
+const REGISTER_ROUTE_COMPLETE_COMPANY = '/registra-azienda'; // Legacy, ora dovrebbe essere /register
+const REGISTER_ROUTE_USER_ONLY = '/register'; // Pagina di registrazione unificata
 const DASHBOARD_BASE_ROUTE = '/dashboard';
-// Public routes that logged-in users (even without a company) can access
-const PUBLIC_ROUTES_ALLOWING_LOGGED_IN_NO_COMPANY = ['/richiedi-intervento']; 
+// Route pubbliche che gli utenti loggati (anche senza azienda) possono accedere senza essere reindirizzati a /register
+const PUBLIC_ROUTES_ALLOWING_LOGGED_IN_NO_COMPANY = ['/richiedi-intervento'];
 
 export function AuthRedirectHandler({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -20,60 +21,79 @@ export function AuthRedirectHandler({ children }: { children: React.ReactNode })
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    console.log("[AuthRedirectHandler] useEffect triggered. Pathname:", pathname);
     const unsubscribe = onAuthStateChanged(auth, async (user: FirebaseUser | null) => {
-      setIsLoading(true);
+      console.log("[AuthRedirectHandler] onAuthStateChanged callback started. User UID:", user?.uid);
+      try {
+        if (user) {
+          console.log("[AuthRedirectHandler] User is authenticated. UID:", user.uid);
+          const companyDocRef = doc(db, "aziende", user.uid);
+          const companyDocSnap = await getDoc(companyDocRef);
+          const companyExists = companyDocSnap.exists();
+          console.log("[AuthRedirectHandler] Company exists for user:", companyExists);
 
-      if (user) {
-        // User is authenticated
-        const companyDocRef = doc(db, "aziende", user.uid);
-        const companyDocSnap = await getDoc(companyDocRef);
-        const companyExists = companyDocSnap.exists();
-
-        if (pathname === LOGIN_ROUTE) {
-          // User is authenticated and on the login page.
-          // Let LoginForm handle redirection upon successful re-login or user can navigate.
-          // If they are here with an active session, LoginForm will guide them.
-        } else if (pathname === REGISTER_ROUTE) {
-          // User is authenticated and on the unified registration page.
-          if (companyExists) {
-            // If they somehow got to /register but already have a company, send to dashboard.
-            router.replace(DASHBOARD_BASE_ROUTE);
+          if (pathname === LOGIN_ROUTE) {
+            console.log("[AuthRedirectHandler] User on login page. No auto redirect. LoginForm will handle action.");
+            // Non reindirizzare automaticamente se l'utente è sulla pagina di login.
+            // Il LoginForm gestirà il redirect dopo un tentativo di login.
+          } else if (pathname === REGISTER_ROUTE_USER_ONLY) {
+            if (companyExists) {
+              console.log(`[AuthRedirectHandler] Authenticated user with company on ${REGISTER_ROUTE_USER_ONLY}. Redirecting to dashboard.`);
+              router.replace(DASHBOARD_BASE_ROUTE);
+            } else {
+              console.log(`[AuthRedirectHandler] Authenticated user without company on ${REGISTER_ROUTE_USER_ONLY}. Allowing to stay.`);
+              // Permetti all'utente di rimanere su /register se non ha un'azienda (es. dopo login Google)
+            }
+          } else if (pathname.startsWith(DASHBOARD_BASE_ROUTE)) {
+            if (!companyExists) {
+              console.log("[AuthRedirectHandler] Authenticated user on dashboard without company. Redirecting to register.");
+              router.replace(REGISTER_ROUTE_USER_ONLY);
+            } else {
+              console.log("[AuthRedirectHandler] Authenticated user with company on dashboard. Allowing to stay.");
+            }
+          } else if (PUBLIC_ROUTES_ALLOWING_LOGGED_IN_NO_COMPANY.some(route => pathname.startsWith(route))) {
+            console.log(`[AuthRedirectHandler] Authenticated user on allowed public route ${pathname}. No redirect needed.`);
+          } else {
+            // Utente autenticato su una pagina non gestita specificamente
+            if (!companyExists) {
+              console.log(`[AuthRedirectHandler] Authenticated user on ${pathname} without company. Redirecting to register.`);
+              router.replace(REGISTER_ROUTE_USER_ONLY);
+            } else {
+              console.log(`[AuthRedirectHandler] Authenticated user on ${pathname} with company. Assuming valid page or allowing stay.`);
+            }
           }
-          // Else, they are on /register; this is fine if they are completing company details
-          // after a Google login, for example. The form itself will handle this.
-        } else if (pathname.startsWith(DASHBOARD_BASE_ROUTE)) {
-          // User is authenticated and on a dashboard page.
-          if (!companyExists) {
-            // If on dashboard but no company profile, redirect to complete company registration.
-            router.replace(REGISTER_ROUTE);
-          }
-          // Else, company exists, they are on dashboard, stay.
-        } else if (PUBLIC_ROUTES_ALLOWING_LOGGED_IN_NO_COMPANY.some(route => pathname.startsWith(route))) {
-          // User is on a public page that allows logged-in users without a company (e.g. /richiedi-intervento)
-          // Do nothing, let them stay.
-        } else {
-          // Authenticated, on some other page not handled above.
-          // If company exists, assume it's a valid page or a sub-page of dashboard.
-          // If no company, and not on a public-allowed page, redirect to register company.
-           if (!companyExists) {
-             router.replace(REGISTER_ROUTE);
-           }
-        }
-      } else {
-        // User is NOT authenticated
-        // If trying to access a protected route (dashboard), redirect to login.
-        // /register is NOT a protected route for unauthenticated users.
-        const isProtectedRoute = pathname.startsWith(DASHBOARD_BASE_ROUTE);
+        } else { // User is NOT authenticated
+          console.log("[AuthRedirectHandler] User is not authenticated.");
+          const isDashboardRoute = pathname.startsWith(DASHBOARD_BASE_ROUTE);
+          // La pagina /register è accessibile anche da non autenticati
+          const isSensitiveRegisterRoute = pathname.startsWith(REGISTER_ROUTE_COMPLETE_COMPANY) && pathname !== REGISTER_ROUTE_USER_ONLY;
 
-        if (isProtectedRoute) {
-           router.replace(LOGIN_ROUTE);
+
+          if (isDashboardRoute || isSensitiveRegisterRoute) {
+             console.log(`[AuthRedirectHandler] Unauthenticated user on protected route ${pathname}. Redirecting to login.`);
+            router.replace(LOGIN_ROUTE);
+          } else if (pathname === LOGIN_ROUTE) {
+             console.log("[AuthRedirectHandler] Unauthenticated user on login page. No redirect needed.");
+          } else if (pathname === REGISTER_ROUTE_USER_ONLY){
+            console.log("[AuthRedirectHandler] Unauthenticated user on register page. No redirect needed.");
+          }
+           else {
+            console.log(`[AuthRedirectHandler] Unauthenticated user on public route ${pathname}. No redirect needed.`);
+          }
         }
-        // Unauthenticated users can freely access LOGIN_ROUTE, REGISTER_ROUTE and public pages.
+      } catch (error) {
+        console.error("[AuthRedirectHandler] Error processing auth state:", error);
+        // Potresti voler mostrare un errore all'utente qui o reindirizzare a una pagina di errore generica
+      } finally {
+        console.log("[AuthRedirectHandler] Auth processing finished. Setting isLoading to false.");
+        setIsLoading(false);
       }
-      setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      console.log("[AuthRedirectHandler] Unsubscribing from onAuthStateChanged.");
+      unsubscribe();
+    };
   }, [pathname, router]);
 
   if (isLoading) {
@@ -86,4 +106,3 @@ export function AuthRedirectHandler({ children }: { children: React.ReactNode })
 
   return <>{children}</>;
 }
-
