@@ -34,6 +34,8 @@ export interface RequestSheetData {
 interface ActiveCollaborator {
   id: string;
   nome_completo: string;
+  ruolo: string; // Assicurati che il ruolo sia qui se necessario per logica interna,
+                 // altrimenti è sufficiente id e nome_completo per registrare chi ha completato.
 }
 const LOCAL_STORAGE_ACTIVE_COLLABORATOR_KEY = "activeIncastroCollaborator";
 
@@ -83,19 +85,16 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
           console.error("Error parsing active collaborator from localStorage for completion:", e);
         }
       } else {
-        // Fallback se non c'è un utente attivo in localStorage (es. admin non ha selezionato)
-        // Potresti voler mettere un nome di default o l'ID dell'admin principale qui.
-        // Per ora, lasciamo che sia vuoto se non trovato.
         console.warn("Nessun collaboratore attivo trovato in localStorage per marcare la richiesta come completata.");
       }
     } else {
-        // Se lo stato cambia da "completata" a qualcos'altro, potremmo voler rimuovere i campi di completamento.
-        // Oppure lasciarli per storico. Per ora li lascio.
-        // Se si vuole rimuoverli, si aggiungerebbe:
-        // additionalData.completata_da_collaboratore_id = deleteField();
-        // additionalData.completata_da_collaboratore_nome = deleteField();
-        // additionalData.data_completamento = deleteField();
-        // Ma questo richiede importare deleteField da firebase/firestore
+        // Se lo stato precedente era "completata" e ora non lo è più,
+        // potremmo voler rimuovere i campi di completamento.
+        if (request.status === "completata") {
+            additionalData.completata_da_collaboratore_id = null; // o deleteField() se vuoi rimuovere il campo
+            additionalData.completata_da_collaboratore_nome = null;
+            additionalData.data_completamento = null;
+        }
     }
 
 
