@@ -69,10 +69,11 @@ export default function DashboardPage() {
 
       // Fetch Stats
       try {
+        // Query for active requests using the 'stato' field
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("status", "not-in", ["Completato", "Annullato"]) // Statuses not 'Completato' or 'Annullato'
+          where("stato", "not-in", ["Completato", "Annullato"]) // Use 'stato' and check for non-terminal statuses
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
 
@@ -119,7 +120,7 @@ export default function DashboardPage() {
             id: doc.id,
             customer: data.customer || data.nome_cliente || "N/D", // Check common field names
             service: data.service || data.tipo_servizio || "N/D", 
-            status: data.status || data.stato || "N/D", // Check common field names
+            status: data.status || data.stato || "N/D", // Check common field names for status
           };
         }) as RecentRequest[];
         setRecentRequests(fetchedRequests);
