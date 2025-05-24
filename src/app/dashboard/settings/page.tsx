@@ -11,12 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Upload } from "lucide-react"; // Aggiunto Upload
-import { useEffect, useState, useRef } from "react"; // Aggiunto useRef
-import { auth, db, storage } from "@/lib/firebase"; // Aggiunto storage
+import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Upload } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { auth, db, storage } from "@/lib/firebase";
 import { onAuthStateChanged, updateProfile, type User as FirebaseUser } from "firebase/auth";
 import { doc, getDoc, setDoc, query, where, collection, getDocs } from "firebase/firestore";
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // Aggiunte importazioni per Storage
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
 import {
   Form,
@@ -68,7 +68,7 @@ export default function SettingsPage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSlugManuallyEditedCompany, setIsSlugManuallyEditedCompany] = useState(false);
   
-  const logoFileInputRef = useRef<HTMLInputElement>(null); // Ref per l'input file del logo
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   const companyForm = useForm<CompanyFormValues>({
@@ -111,7 +111,7 @@ export default function SettingsPage() {
             };
             setCompanyData(loadedCompanyData);
             companyForm.reset(loadedCompanyData);
-            if (data.slug) setIsSlugManuallyEditedCompany(true); // Se esiste uno slug, consideralo modificato manualmente per evitare sovrascrittura
+            if (data.slug) setIsSlugManuallyEditedCompany(true);
           } else {
              companyForm.reset({
                 logoUrl: "https://placehold.co/100x100.png?text=Logo",
@@ -164,32 +164,40 @@ export default function SettingsPage() {
 
     setIsUploadingLogo(true);
     try {
-      const logoStorageRef = storageRef(storage, `logos/${currentUser.uid}/${file.name}`);
-      const uploadTask = uploadBytesResumable(logoStorageRef, file);
+      const logoStoragePath = `logos/${currentUser.uid}/${file.name}`;
+      console.log(`Attempting to upload logo to: ${logoStoragePath}`);
+      const logoUploadRef = storageRef(storage, logoStoragePath);
+      const uploadTask = uploadBytesResumable(logoUploadRef, file);
 
       uploadTask.on('state_changed',
         (snapshot) => {
-          // Opzionale: gestire il progresso dell'upload
-          // const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          // console.log('Upload is ' + progress + '% done');
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          console.log('Upload is ' + progress + '% done');
         },
         (error) => {
-          console.error("Errore upload logo:", error);
-          toast({ title: "Errore Upload Logo", description: "Impossibile caricare il logo. Riprova.", variant: "destructive" });
+          console.error("Errore durante l'upload del logo (uploadTask.on error):", error.code, error.message, error);
+          toast({ title: "Errore Upload Logo", description: `Impossibile caricare il logo: ${error.message}. Controlla i permessi di Firebase Storage.`, variant: "destructive" });
           setIsUploadingLogo(false);
         },
         async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          companyForm.setValue("logoUrl", downloadURL, { shouldValidate: true, shouldDirty: true });
-          setCompanyData(prev => ({ ...prev, logoUrl: downloadURL }));
-          toast({ title: "Logo Caricato!", description: "Il nuovo logo è stato caricato. Salva le modifiche per applicarlo." });
-          setIsUploadingLogo(false);
+          try {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            console.log("Logo caricato, URL:", downloadURL);
+            companyForm.setValue("logoUrl", downloadURL, { shouldValidate: true, shouldDirty: true });
+            setCompanyData(prev => ({ ...prev, logoUrl: downloadURL }));
+            toast({ title: "Logo Caricato!", description: "Il nuovo logo è stato caricato. Salva le modifiche per applicarlo." });
+          } catch (downloadError) {
+            console.error("Errore ottenimento Download URL:", downloadError);
+            toast({ title: "Errore Post-Upload", description: "Logo caricato ma impossibile ottenere URL.", variant: "destructive" });
+          } finally {
+            setIsUploadingLogo(false);
+          }
         }
       );
     } catch (error) {
-      console.error("Errore durante l'avvio dell'upload:", error);
+      console.error("Errore durante l'avvio dell'upload del logo:", error);
       toast({ title: "Errore Upload", description: "Si è verificato un errore imprevisto durante il caricamento.", variant: "destructive" });
-      setIsUploadingLogo(false);
+      setIsUploadingLogo(false); // Assicura che lo stato di caricamento sia resettato
     }
   };
 
@@ -206,19 +214,19 @@ export default function SettingsPage() {
       const currentSlug = currentCompanyDataSnap.exists() ? currentCompanyDataSnap.data().slug : null;
 
       const finalSlug = generateSlug(data.slug);
-       if (finalSlug !== data.slug && data.slug.trim() !== "") { // Solo se lo slug è stato modificato e non è vuoto
+       if (finalSlug !== data.slug && data.slug.trim() !== "") {
           companyForm.setValue("slug", finalSlug, { shouldValidate: true });
-      } else if (data.slug.trim() === "" && companyForm.getValues("nome")) { // Se slug è vuoto ma nome esiste, rigeneralo
+      } else if (data.slug.trim() === "" && companyForm.getValues("nome")) {
           const regeneratedSlug = generateSlug(companyForm.getValues("nome"));
           companyForm.setValue("slug", regeneratedSlug, { shouldValidate: true });
-          data.slug = regeneratedSlug; // aggiorna i dati da validare
-      } else if (data.slug.trim() === "" && !companyForm.getValues("nome")) { // se entrambi sono vuoti, errore
+          data.slug = regeneratedSlug;
+      } else if (data.slug.trim() === "" && !companyForm.getValues("nome")) {
           companyForm.setError("slug", { type: "manual", message: "Lo slug è richiesto o il nome azienda per generarlo." });
           setIsSavingCompany(false);
           return;
       }
       
-      const validatedData = companyFormSchema.parse({...data, slug: data.slug}); // Usa data.slug che è stato aggiornato
+      const validatedData = companyFormSchema.parse({...data, slug: data.slug});
 
       if (validatedData.slug !== currentSlug) {
         const slugQuery = query(collection(db, "aziende"), where("slug", "==", validatedData.slug));
@@ -390,8 +398,8 @@ export default function SettingsPage() {
                                 disabled={isSavingCompany || isUploadingLogo}
                                 onBlur={(e) => {
                                     const manualSlug = generateSlug(e.target.value);
-                                    if (e.target.value.trim() === "") { // Se l'utente cancella lo slug
-                                        field.onChange(""); // Mantieni vuoto, non rigenerare subito
+                                    if (e.target.value.trim() === "") { 
+                                        field.onChange(""); 
                                     } else if (e.target.value !== manualSlug) {
                                         field.onChange(manualSlug);
                                         companyForm.trigger("slug");
@@ -400,7 +408,7 @@ export default function SettingsPage() {
                                     field.onBlur();
                                 }}
                                 onChange={(e) => {
-                                    field.onChange(e.target.value);
+                                    field.onChange(e.target.value); 
                                     if (!isSlugManuallyEditedCompany && e.target.value !== generateSlug(companyNameValue) ) {
                                         setIsSlugManuallyEditedCompany(true);
                                     }
