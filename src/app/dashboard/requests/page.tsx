@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { RequestDetailsSheet } from "@/components/dashboard/requests/RequestDetailsSheet";
+import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet"; // Importa RequestSheetData
 import { useToast } from "@/hooks/use-toast";
 
 import { auth, db } from "@/lib/firebase";
@@ -25,6 +25,7 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc } from "firebase/firestore";
 import { format } from 'date-fns';
 
+// Interfaccia per le richieste, assicurati che includa tutti i campi per RequestSheetData
 export interface ClientRequest {
   id: string;
   id_azienda: string;
@@ -34,13 +35,12 @@ export interface ClientRequest {
   created_at: Timestamp;
   indirizzo_intervento?: string;
   telefono_cliente?: string;
+  email_cliente?: string; // Aggiunto
   giorno_preferito?: string;
   fascia_oraria?: string;
   note_aggiuntive?: string;
-  // Aggiungi altri campi se necessario, es. tecnico_assegnato, priorita
 }
 
-// Definisci gli stati possibili come li usi in Firestore e per i filtri
 const ALL_STATUSES = ["in attesa", "assegnata", "programmata", "in corso", "completata", "annullata"];
 
 
@@ -55,7 +55,7 @@ export default function AllRequestsPage() {
   const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [selectedRequestForSheet, setSelectedRequestForSheet] = useState<ClientRequest | null>(null);
+  const [selectedRequestForSheet, setSelectedRequestForSheet] = useState<RequestSheetData | null>(null); // Usa RequestSheetData
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -87,10 +87,10 @@ export default function AllRequestsPage() {
           orderBy("created_at", "desc")
         );
         const querySnapshot = await getDocs(requestsQuery);
-        const fetchedRequests = querySnapshot.docs.map(doc => {
-          const data = doc.data();
+        const fetchedRequests = querySnapshot.docs.map(docSnap => { // Rinominato doc a docSnap per evitare conflitto
+          const data = docSnap.data();
           return {
-            id: doc.id,
+            id: docSnap.id, // Usa docSnap.id
             id_azienda: data.id_azienda,
             nome_cliente: data.nome_cliente || "N/D",
             tipo_servizio: data.tipo_servizio || "N/D",
@@ -98,6 +98,7 @@ export default function AllRequestsPage() {
             created_at: data.created_at as Timestamp,
             indirizzo_intervento: data.indirizzo_intervento,
             telefono_cliente: data.telefono_cliente,
+            email_cliente: data.email_cliente, // Aggiunto
             giorno_preferito: data.giorno_preferito,
             fascia_oraria: data.fascia_oraria,
             note_aggiuntive: data.note_aggiuntive,
@@ -135,24 +136,36 @@ export default function AllRequestsPage() {
   }, [allRequests, searchTerm, activeStatusFilters]);
 
   const handleOpenDetailsSheet = (request: ClientRequest) => {
-    setSelectedRequestForSheet(request);
+    // Mappa ClientRequest a RequestSheetData
+    const sheetData: RequestSheetData = {
+        id: request.id,
+        customer: request.nome_cliente,
+        service: request.tipo_servizio,
+        status: request.stato,
+        created_at: request.created_at,
+        indirizzo_intervento: request.indirizzo_intervento,
+        telefono_cliente: request.telefono_cliente,
+        email_cliente: request.email_cliente, // Aggiunto
+        giorno_preferito: request.giorno_preferito,
+        fascia_oraria: request.fascia_oraria,
+        note_aggiuntive: request.note_aggiuntive,
+    };
+    setSelectedRequestForSheet(sheetData);
     setIsSheetOpen(true);
   };
   
   const handleUpdateRequestStatusOnPage = async (requestId: string, newStatus: string) => {
     if (!companyId) return;
     try {
-      const requestDocRef = doc(db, "richieste_clienti", requestId);
+      const requestDocRef = doc(db, "richieste_clienti", requestId); // Usa db importato
       await updateDoc(requestDocRef, { stato: newStatus });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
       
-      // Update local state to reflect changes immediately
       setAllRequests(prevRequests =>
         prevRequests.map(req =>
           req.id === requestId ? { ...req, stato: newStatus } : req
         )
       );
-      // No need to re-fetch all, local update is sufficient for filtering
     } catch (error) {
       console.error("Error updating request status:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare lo stato della richiesta.", variant: "destructive" });
@@ -231,7 +244,7 @@ export default function AllRequestsPage() {
           {isLoading ? (
             <div className="text-center py-12 text-muted-foreground">Caricamento richieste...</div>
           ) : filteredRequests.length > 0 ? (
-            <ScrollArea className="h-[calc(100vh-22rem)] lg:h-[calc(100vh-20rem)]"> {/* Adjust height as needed */}
+            <ScrollArea className="h-[calc(100vh-22rem)] lg:h-[calc(100vh-20rem)]">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -255,7 +268,7 @@ export default function AllRequestsPage() {
                               req.stato === "completata" ? "default" :
                               req.stato === "annullata" ? "destructive" :
                               req.stato === "in attesa" ? "outline" :
-                              "secondary" // per assegnata, programmata, in corso
+                              "secondary" 
                             }
                             className={
                               req.stato === "completata" ? "bg-green-100 text-green-700 border-green-200" :
@@ -296,18 +309,7 @@ export default function AllRequestsPage() {
         <RequestDetailsSheet
           isOpen={isSheetOpen}
           onOpenChange={setIsSheetOpen}
-          request={{ // Map ClientRequest to RecentRequest format expected by Sheet
-            id: selectedRequestForSheet.id,
-            customer: selectedRequestForSheet.nome_cliente,
-            service: selectedRequestForSheet.tipo_servizio,
-            status: selectedRequestForSheet.stato,
-            created_at: selectedRequestForSheet.created_at,
-            indirizzo_intervento: selectedRequestForSheet.indirizzo_intervento,
-            telefono_cliente: selectedRequestForSheet.telefono_cliente,
-            giorno_preferito: selectedRequestForSheet.giorno_preferito,
-            fascia_oraria: selectedRequestForSheet.fascia_oraria,
-            note_aggiuntive: selectedRequestForSheet.note_aggiuntive,
-          }}
+          request={selectedRequestForSheet} // selectedRequestForSheet è già di tipo RequestSheetData
           onUpdateRequestStatus={handleUpdateRequestStatusOnPage}
         />
       )}

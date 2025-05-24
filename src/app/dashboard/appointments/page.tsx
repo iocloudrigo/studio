@@ -9,7 +9,7 @@ import { CalendarDays, PlusCircle, Search, ExternalLink, FileText } from "lucide
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { RequestDetailsSheet } from "@/components/dashboard/requests/RequestDetailsSheet";
+import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet"; // Importa RequestSheetData
 import { useToast } from "@/hooks/use-toast";
 
 import { auth, db } from "@/lib/firebase";
@@ -17,21 +17,20 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc } from "firebase/firestore";
 import { format } from 'date-fns';
 
-// Interfaccia per gli appuntamenti, simile a ClientRequest ma potrebbe evolvere
+// Interfaccia per gli appuntamenti, assicurati che includa tutti i campi per RequestSheetData
 export interface ScheduledAppointment {
   id: string;
   id_azienda: string;
   nome_cliente: string;
   tipo_servizio: string;
-  stato: string; // Sarà "programmata"
-  created_at: Timestamp; // o una data appuntamento specifica se esiste
+  stato: string; 
+  created_at: Timestamp; 
   indirizzo_intervento?: string;
   telefono_cliente?: string;
+  email_cliente?: string; // Aggiunto
   giorno_preferito?: string;
   fascia_oraria?: string;
   note_aggiuntive?: string;
-  // Campi specifici per appuntamento potrebbero essere aggiunti qui
-  // es. tecnico_assegnato, data_ora_appuntamento
 }
 
 export default function AppointmentsPage() {
@@ -44,7 +43,7 @@ export default function AppointmentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [selectedAppointmentForSheet, setSelectedAppointmentForSheet] = useState<ScheduledAppointment | null>(null);
+  const [selectedAppointmentForSheet, setSelectedAppointmentForSheet] = useState<RequestSheetData | null>(null); // Usa RequestSheetData
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -73,8 +72,8 @@ export default function AppointmentsPage() {
         const appointmentsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "==", "programmata"), // Filtra per stato "programmata"
-          orderBy("created_at", "desc") // Ordina per data creazione, o data appuntamento se disponibile
+          where("stato", "==", "programmata"), 
+          orderBy("created_at", "desc") 
         );
         const querySnapshot = await getDocs(appointmentsQuery);
         const fetchedAppointments = querySnapshot.docs.map(docSnap => {
@@ -88,6 +87,7 @@ export default function AppointmentsPage() {
             created_at: data.created_at as Timestamp,
             indirizzo_intervento: data.indirizzo_intervento,
             telefono_cliente: data.telefono_cliente,
+            email_cliente: data.email_cliente, // Aggiunto
             giorno_preferito: data.giorno_preferito,
             fascia_oraria: data.fascia_oraria,
             note_aggiuntive: data.note_aggiuntive,
@@ -116,7 +116,21 @@ export default function AppointmentsPage() {
   }, [scheduledAppointments, searchTerm]);
 
   const handleOpenDetailsSheet = (appointment: ScheduledAppointment) => {
-    setSelectedAppointmentForSheet(appointment);
+    // Mappa ScheduledAppointment a RequestSheetData
+    const sheetData: RequestSheetData = {
+        id: appointment.id,
+        customer: appointment.nome_cliente,
+        service: appointment.tipo_servizio,
+        status: appointment.stato,
+        created_at: appointment.created_at,
+        indirizzo_intervento: appointment.indirizzo_intervento,
+        telefono_cliente: appointment.telefono_cliente,
+        email_cliente: appointment.email_cliente, // Aggiunto
+        giorno_preferito: appointment.giorno_preferito,
+        fascia_oraria: appointment.fascia_oraria,
+        note_aggiuntive: appointment.note_aggiuntive,
+    };
+    setSelectedAppointmentForSheet(sheetData);
     setIsSheetOpen(true);
   };
   
@@ -130,7 +144,7 @@ export default function AppointmentsPage() {
       setScheduledAppointments(prevApps =>
         prevApps.map(app =>
           app.id === requestId ? { ...app, stato: newStatus } : app
-        ).filter(app => newStatus === "programmata" ? true : app.id !== requestId) // Rimuove se lo stato non è più "programmata"
+        ).filter(app => newStatus === "programmata" ? true : app.id !== requestId) 
       );
     } catch (error) {
       console.error("Error updating appointment status:", error);
@@ -152,12 +166,9 @@ export default function AppointmentsPage() {
           <p className="text-muted-foreground">Visualizza e gestisci gli appuntamenti fissati.</p>
         </div>
         <div className="flex gap-2">
-            {/* <Button variant="outline">
-                <ExternalLink className="mr-2 h-4 w-4" /> Sincronizza Calendario
-            </Button> */}
             <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
-            <Link href="/dashboard/appointments/new">
-                <PlusCircle className="mr-2 h-4 w-4" /> Nuovo Appuntamento
+            <Link href="/dashboard/requests/new"> {/* Modificato per puntare alla pagina di creazione richiesta generica */}
+                <PlusCircle className="mr-2 h-4 w-4" /> Nuova Richiesta
             </Link>
             </Button>
         </div>
@@ -190,7 +201,6 @@ export default function AppointmentsPage() {
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Cliente</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Servizio</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Data Creazione</th>
-                      {/* Aggiungere colonna Data Appuntamento se disponibile */}
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th>
                       <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
                     </tr>
@@ -234,18 +244,7 @@ export default function AppointmentsPage() {
         <RequestDetailsSheet
           isOpen={isSheetOpen}
           onOpenChange={setIsSheetOpen}
-          request={{ // Mappa ScheduledAppointment al formato atteso da RequestDetailsSheet (RecentRequest)
-            id: selectedAppointmentForSheet.id,
-            customer: selectedAppointmentForSheet.nome_cliente,
-            service: selectedAppointmentForSheet.tipo_servizio,
-            status: selectedAppointmentForSheet.stato,
-            created_at: selectedAppointmentForSheet.created_at,
-            indirizzo_intervento: selectedAppointmentForSheet.indirizzo_intervento,
-            telefono_cliente: selectedAppointmentForSheet.telefono_cliente,
-            giorno_preferito: selectedAppointmentForSheet.giorno_preferito,
-            fascia_oraria: selectedAppointmentForSheet.fascia_oraria,
-            note_aggiuntive: selectedAppointmentForSheet.note_aggiuntive,
-          }}
+          request={selectedAppointmentForSheet} // selectedAppointmentForSheet è già di tipo RequestSheetData
           onUpdateRequestStatus={handleUpdateRequestStatusOnPage}
         />
       )}

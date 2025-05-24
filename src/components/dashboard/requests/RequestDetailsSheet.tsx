@@ -7,15 +7,31 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect, type FC } from "react";
-import type { RecentRequest } from "@/app/dashboard/page"; 
-import { Timestamp } from "firebase/firestore";
+// Assicurati che questa interfaccia sia coerente con quella usata nelle pagine
+// Se hai un'interfaccia ClientRequest globale, potresti importarla
+export interface RequestSheetData {
+  id: string;
+  customer: string; 
+  service: string;  
+  status: string;   
+  created_at?: firebase.firestore.Timestamp | Date; 
+  note_aggiuntive?: string;
+  indirizzo_intervento?: string;
+  telefono_cliente?: string;
+  email_cliente?: string; // Aggiunto
+  giorno_preferito?: string;
+  fascia_oraria?: string;
+}
+
+
+import { Timestamp } from "firebase/firestore"; // Importa Timestamp
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
 
 interface RequestDetailsSheetProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  request: RecentRequest | null;
+  request: RequestSheetData | null; // Usa l'interfaccia aggiornata
   onUpdateRequestStatus: (requestId: string, newStatus: string) => Promise<void>;
 }
 
@@ -57,11 +73,11 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
 
   const formatDate = (dateValue: Timestamp | Date | undefined | string) => {
     if (!dateValue) return "N/D";
-    if (typeof dateValue === 'string') { // Handle if it's already a string (though Firestore Timestamps are preferred)
+    if (typeof dateValue === 'string') { 
         try {
             return format(new Date(dateValue), "dd/MM/yyyy HH:mm");
         } catch (e) {
-            return dateValue; // return original string if not parsable
+            return dateValue; 
         }
     }
     try {
@@ -83,10 +99,11 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
             <div><p className="font-medium text-muted-foreground">ID Richiesta:</p><p className="break-all">{request.id}</p></div>
-            <div><p className="font-medium text-muted-foreground">Stato Attuale:</p><p className="capitalize">{request.status}</p></div>
+            <div><p className="font-medium text-muted-foreground">Stato Attuale:</p><p className="capitalize">{request.status.replace("_", " ")}</p></div>
             <div><p className="font-medium text-muted-foreground">Data Creazione:</p><p>{formatDate(request.created_at)}</p></div>
             <div><p className="font-medium text-muted-foreground">Cliente:</p><p>{request.customer}</p></div>
             <div><p className="font-medium text-muted-foreground">Telefono:</p><p>{request.telefono_cliente || "N/D"}</p></div>
+            <div><p className="font-medium text-muted-foreground">Email:</p><p>{request.email_cliente || "N/D"}</p></div>
             <div><p className="font-medium text-muted-foreground">Indirizzo Intervento:</p><p>{request.indirizzo_intervento || "N/D"}</p></div>
             <div><p className="font-medium text-muted-foreground">Servizio Richiesto:</p><p>{request.service}</p></div>
             <div><p className="font-medium text-muted-foreground">Giorno Preferito:</p><p>{request.giorno_preferito || "N/D"}</p></div>

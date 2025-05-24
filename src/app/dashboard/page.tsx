@@ -5,9 +5,9 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity } from "lucide-react";
+import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity, CalendarDays } from "lucide-react"; // Aggiunto CalendarDays
 import { Skeleton } from "@/components/ui/skeleton"; 
-import { RequestDetailsSheet } from "@/components/dashboard/requests/RequestDetailsSheet";
+import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet"; // Importa RequestSheetData
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area"; 
 
@@ -21,6 +21,7 @@ interface DashboardStats {
   inProgressRequests: number | null;
 }
 
+// Interfaccia per le richieste recenti, assicurati che includa tutti i campi per RequestSheetData
 export interface RecentRequest {
   id: string;
   customer: string; 
@@ -30,6 +31,7 @@ export interface RecentRequest {
   note_aggiuntive?: string;
   indirizzo_intervento?: string;
   telefono_cliente?: string;
+  email_cliente?: string; // Aggiunto
   giorno_preferito?: string;
   fascia_oraria?: string;
 }
@@ -54,7 +56,7 @@ export default function DashboardPage() {
   const [loadingRequests, setLoadingRequests] = useState(true);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<RecentRequest | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<RequestSheetData | null>(null); // Usa RequestSheetData
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -64,7 +66,6 @@ export default function DashboardPage() {
       } else {
         setCurrentUser(null);
         setCompanyId(null);
-        // Reset stats and requests if user logs out
         setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 });
         setRecentRequests([]);
         setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false });
@@ -159,10 +160,11 @@ export default function DashboardPage() {
             note_aggiuntive: data.note_aggiuntive || "",
             indirizzo_intervento: data.indirizzo_intervento || "",
             telefono_cliente: data.telefono_cliente || "",
+            email_cliente: data.email_cliente || "", // Aggiunto
             giorno_preferito: data.giorno_preferito || "",
             fascia_oraria: data.fascia_oraria || "",
-          };
-        }) as RecentRequest[];
+          } as RecentRequest; // Cast a RecentRequest
+        });
         setRecentRequests(fetchedRequests);
       } catch (error) {
         console.error("Error fetching recent requests:", error);
@@ -186,18 +188,15 @@ export default function DashboardPage() {
       await updateDoc(requestDocRef, { stato: newStatus });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
-      // Update local state for recent requests
       setRecentRequests(prevRequests =>
         prevRequests.map(req =>
           req.id === requestId ? { ...req, status: newStatus } : req
         )
       );
       
-      // Refetch stats as status change can affect them
       if (companyId) {
         setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true }));
         try {
-            // Refetch Active Requests
             const activeRequestsQuery = query(
               collection(db, "richieste_clienti"),
               where("id_azienda", "==", companyId),
@@ -206,7 +205,6 @@ export default function DashboardPage() {
             const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
             setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
 
-            // Refetch Assigned Requests
             const assignedRequestsQuery = query( 
                 collection(db, "richieste_clienti"),
                 where("id_azienda", "==", companyId),
@@ -215,7 +213,6 @@ export default function DashboardPage() {
             const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
             setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
 
-            // Refetch In Progress Requests
             const inProgressRequestsQuery = query( 
                 collection(db, "richieste_clienti"),
                 where("id_azienda", "==", companyId),
@@ -226,7 +223,6 @@ export default function DashboardPage() {
 
         } catch (error) {
             console.error("Error refetching stats after update:", error);
-            // Avoid resetting all stats to 0 if one refetch fails, let previous values persist or show individual errors
         } finally {
             setLoadingStats(prev => ({ ...prev, activeRequests: false, assignedRequests: false, inProgressRequests: false }));
         }
@@ -254,7 +250,6 @@ export default function DashboardPage() {
         </Button>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -300,7 +295,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Recent Requests Table */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Ultime Richieste</CardTitle>
@@ -319,11 +313,11 @@ export default function DashboardPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b">
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card">ID</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card">Cliente</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card">Servizio</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card">Stato</th>
-                      <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card">Azioni</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">ID</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Cliente</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Servizio</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th>
+                      <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -350,7 +344,21 @@ export default function DashboardPage() {
                             variant="outline" 
                             size="sm" 
                             onClick={() => {
-                              setSelectedRequest(req);
+                              // Mappa RecentRequest a RequestSheetData
+                              const sheetData: RequestSheetData = {
+                                id: req.id,
+                                customer: req.customer,
+                                service: req.service,
+                                status: req.status,
+                                created_at: req.created_at,
+                                note_aggiuntive: req.note_aggiuntive,
+                                indirizzo_intervento: req.indirizzo_intervento,
+                                telefono_cliente: req.telefono_cliente,
+                                email_cliente: req.email_cliente, // Aggiunto
+                                giorno_preferito: req.giorno_preferito,
+                                fascia_oraria: req.fascia_oraria,
+                              };
+                              setSelectedRequest(sheetData);
                               setIsSheetOpen(true);
                             }}
                           >
@@ -372,14 +380,13 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Other Dashboard Sections */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle>Prossimi Appuntamenti</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-            <ClipboardCheck className="h-12 w-12 mb-2" /> 
+            <CalendarDays className="h-12 w-12 mb-2" /> 
             <p>Nessun appuntamento imminente.</p>
             <Button variant="link" asChild className="mt-2 text-accent"><Link href="/dashboard/appointments">Vedi tutti</Link></Button>
           </CardContent>
@@ -401,12 +408,10 @@ export default function DashboardPage() {
         <RequestDetailsSheet
           isOpen={isSheetOpen}
           onOpenChange={setIsSheetOpen}
-          request={selectedRequest}
+          request={selectedRequest} // selectedRequest è già di tipo RequestSheetData
           onUpdateRequestStatus={handleUpdateRequestStatus}
         />
       )}
     </div>
   );
 }
-
-    

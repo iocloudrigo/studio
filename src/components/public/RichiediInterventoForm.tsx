@@ -16,45 +16,55 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { Loader2, User, Phone, MapPin, CalendarDays, Clock, Wrench, StickyNote } from "lucide-react";
+import { Loader2, User, Phone, Mail, MapPin, CalendarDays, Clock, Wrench, StickyNote } from "lucide-react";
 
 // Firebase imports
-import { collection, addDoc, serverTimestamp, doc, runTransaction, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase"; // Assicurati che db sia esportato da firebase.ts
+import { collection, addDoc, serverTimestamp, doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 const RichiediInterventoFormSchema = z.object({
   id_azienda: z.string().min(1, "ID Azienda è richiesto."),
-  nome_cliente: z.string().min(1, "Nome e Cognome è obbligatorio."),
+  nome_cliente: z.string().min(1, "Nome e Cognome del cliente è obbligatorio."),
   telefono_cliente: z.string().min(1, "Numero di telefono è obbligatorio."),
+  email_cliente: z.string().email("Formato email non valido.").min(1, "L'email è obbligatoria."),
   indirizzo_intervento: z.string().min(1, "Indirizzo dell'intervento è obbligatorio."),
   giorno_preferito: z.string().min(1, "Giorno preferito è obbligatorio."),
-  fascia_oraria: z.string().min(1, "Fascia oraria è obbligatoria."),
-  tipo_servizio: z.string().min(1, "Tipo di servizio è obbligatorio."),
+  fascia_oraria: z.string().min(1, "Fascia oraria preferita è obbligatoria."),
+  tipo_servizio: z.string().min(1, "Tipo di servizio richiesto è obbligatorio."),
   note_aggiuntive: z.string().optional(),
 });
 
-export type RichiediInterventoFormValues = z.infer<typeof RichiediInterventoFormSchema>;
+type RichiediInterventoFormValues = z.infer<typeof RichiediInterventoFormSchema>;
+
+const giorniSettimana = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì"];
+const fasceOrarie = ["Mattina (9-13)", "Pomeriggio (14-18)", "Sera (18-20)"];
 
 export interface RichiediInterventoFormProps {
-  id_azienda: string | null; // Può essere null se l'azienda non è trovata
+  id_azienda: string;
   companyDisplayName: string;
 }
 
 export function RichiediInterventoForm({ id_azienda, companyDisplayName }: RichiediInterventoFormProps) {
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<RichiediInterventoFormValues>({
     resolver: zodResolver(RichiediInterventoFormSchema),
     defaultValues: {
-      id_azienda: id_azienda || "",
+      id_azienda: id_azienda,
       nome_cliente: "",
       telefono_cliente: "",
+      email_cliente: "",
       indirizzo_intervento: "",
       giorno_preferito: "",
       fascia_oraria: "",
@@ -62,8 +72,9 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
       note_aggiuntive: "",
     },
   });
-  
+
   useEffect(() => {
+    // Popola id_azienda quando la prop cambia (es. dopo il caricamento asincrono nella pagina genitore)
     if (id_azienda) {
       form.setValue("id_azienda", id_azienda);
     }
@@ -71,101 +82,62 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
 
 
   async function onSubmit(data: RichiediInterventoFormValues) {
-    setIsSubmitting(true);
-    console.log("Dati del form inviati:", data);
+    console.log("RichiediInterventoForm onSubmit data:", data);
+    console.log("ID Azienda nel form al submit:", data.id_azienda);
 
     if (!data.id_azienda) {
       toast({
-        title: "Errore Invio Richiesta",
-        description: "ID azienda mancante. Impossibile inviare la richiesta.",
+        title: "Errore Critico",
+        description: "ID Azienda mancante. Impossibile inviare la richiesta. Si prega di ricaricare la pagina o contattare l'assistenza.",
         variant: "destructive",
       });
-      setIsSubmitting(false);
+      setIsLoading(false);
       return;
     }
+    setIsLoading(true);
 
     try {
       const docData = {
-        id_azienda: data.id_azienda,
-        nome_cliente: data.nome_cliente,
-        telefono_cliente: data.telefono_cliente,
-        indirizzo_intervento: data.indirizzo_intervento,
-        giorno_preferito: data.giorno_preferito,
-        fascia_oraria: data.fascia_oraria,
-        tipo_servizio: data.tipo_servizio,
-        note_aggiuntive: data.note_aggiuntive || null, // Salva null se vuoto
-        stato: "in attesa", // Stato iniziale
+        ...data,
+        stato: "in attesa", // Stato iniziale minuscolo
         created_at: serverTimestamp(),
       };
-      console.log("Documento da salvare in richieste_clienti:", docData);
-
+      
+      console.log("Dati da salvare in Firestore:", docData);
       await addDoc(collection(db, "richieste_clienti"), docData);
 
-      console.log("Richiesta inviata con successo a Firestore.");
       toast({
         title: "Richiesta Inviata!",
-        description: "La tua richiesta è stata inviata con successo. Verrai ricontattato al più presto.",
+        description: `La tua richiesta a ${companyDisplayName} è stata inviata con successo. Verrai ricontattato al più presto.`,
       });
-      setIsSubmitted(true); // Imposta lo stato a inviato con successo
-      form.reset(); // Resetta il form
-
+      form.reset(); // Resetta i campi del form
     } catch (error: any) {
-      console.error("Errore durante l'invio della richiesta:", error);
-      let errorMessage = "Si è verificato un errore durante l'invio della richiesta. Riprova più tardi.";
-      if (error.code === 'permission-denied') {
-        errorMessage = "Errore di permessi. Controlla le regole di sicurezza di Firestore.";
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
+      console.error("Errore durante l'invio della richiesta: ", error);
       toast({
         title: "Errore Invio Richiesta",
-        description: errorMessage,
+        description: `Si è verificato un errore: ${error.message || "Riprova più tardi."}`,
         variant: "destructive",
       });
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   }
 
-  if (isSubmitted) {
-    return (
-      <Card className="w-full max-w-2xl mx-auto shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-2xl text-center text-primary">Richiesta Inviata con Successo!</CardTitle>
-        </CardHeader>
-        <CardContent className="text-center">
-          <p className="text-lg">Grazie per averci contattato.</p>
-          <p className="text-muted-foreground">Verrai ricontattato al più presto da {companyDisplayName}.</p>
-          <Button onClick={() => setIsSubmitted(false)} className="mt-6">Invia un'altra richiesta</Button>
-        </CardContent>
-      </Card>
-    );
-  }
-  
-  if (!id_azienda) {
-    return (
-      <Card className="w-full max-w-2xl mx-auto shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-2xl text-center text-destructive">Errore Configurazione</CardTitle>
-        </CardHeader>
-        <CardContent className="text-center">
-          <p className="text-muted-foreground">
-            Impossibile inviare la richiesta: l'identificativo dell'azienda non è disponibile.
-            Verifica che il link fornito sia corretto o contatta l'assistenza.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const formTitle = companyDisplayName === "la tua azienda di fiducia"
+    ? "Richiedi un Intervento"
+    : `Richiedi un Intervento a ${companyDisplayName}`;
+
+  const formDescription = companyDisplayName === "la tua azienda di fiducia"
+    ? "Compila i campi sottostanti per inviare la tua richiesta. Verrai ricontattato al più presto."
+    : `Compila i campi sottostanti per inviare una richiesta a ${companyDisplayName}. Verrai ricontattato al più presto.`;
 
 
   return (
-    <Card className="w-full max-w-2xl mx-auto shadow-lg">
+    <Card className="max-w-2xl mx-auto shadow-lg">
       <CardHeader>
-        <CardTitle className="text-2xl text-center">Richiedi un Intervento</CardTitle>
-        <CardDescription className="text-center text-muted-foreground">
-          Compila i campi sottostanti per inviare una richiesta {companyDisplayName === "la tua azienda di fiducia" ? "alla tua azienda di fiducia" : `a ${companyDisplayName}`}.
-          Verrai ricontattato al più presto. I campi contrassegnati con <span className="text-destructive">*</span> sono obbligatori.
+        <CardTitle className="text-center text-2xl">{formTitle}</CardTitle>
+        <CardDescription className="text-center">
+          {formDescription}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -177,11 +149,11 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 name="nome_cliente"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Nome e Cognome <span className="text-destructive">*</span></FormLabel>
+                    <FormLabel>Nome e Cognome Cliente <span className="text-destructive">*</span></FormLabel>
                     <FormControl>
                       <div className="relative">
                         <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input placeholder="Mario Rossi" {...field} className="pl-10" disabled={isSubmitting} />
+                        <Input placeholder="Es: Mario Rossi" {...field} className="pl-10" />
                       </div>
                     </FormControl>
                     <FormMessage />
@@ -197,7 +169,7 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                     <FormControl>
                       <div className="relative">
                         <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input type="tel" placeholder="3331234567" {...field} className="pl-10" disabled={isSubmitting} />
+                        <Input type="tel" placeholder="Es: 3331234567" {...field} className="pl-10" />
                       </div>
                     </FormControl>
                     <FormMessage />
@@ -205,6 +177,23 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 )}
               />
             </div>
+
+             <FormField
+                control={form.control}
+                name="email_cliente"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email Cliente <span className="text-destructive">*</span></FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input type="email" placeholder="Es: mario.rossi@email.com" {...field} className="pl-10" />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
             <FormField
               control={form.control}
@@ -215,7 +204,7 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                   <FormControl>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input placeholder="Via Roma 1, 20121 Milano MI" {...field} className="pl-10" disabled={isSubmitting} />
+                      <Input placeholder="Es: Via Roma 1, 20100 Milano MI" {...field} className="pl-10" />
                     </div>
                   </FormControl>
                   <FormMessage />
@@ -230,7 +219,7 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Giorno Preferito <span className="text-destructive">*</span></FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <div className="relative">
                           <CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -240,11 +229,9 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                         </div>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="Lunedi">Lunedì</SelectItem>
-                        <SelectItem value="Martedi">Martedì</SelectItem>
-                        <SelectItem value="Mercoledi">Mercoledì</SelectItem>
-                        <SelectItem value="Giovedi">Giovedì</SelectItem>
-                        <SelectItem value="Venerdi">Venerdì</SelectItem>
+                        {giorniSettimana.map(giorno => (
+                          <SelectItem key={giorno} value={giorno}>{giorno}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -257,19 +244,19 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Fascia Oraria Preferita <span className="text-destructive">*</span></FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <div className="relative">
                           <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                           <SelectTrigger className="pl-10">
-                            <SelectValue placeholder="Seleziona una fascia..." />
+                            <SelectValue placeholder="Seleziona una fascia oraria..." />
                           </SelectTrigger>
                         </div>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="Mattina">Mattina (9-13)</SelectItem>
-                        <SelectItem value="Pomeriggio">Pomeriggio (14-18)</SelectItem>
-                        <SelectItem value="Sera">Sera (dopo le 18)</SelectItem>
+                        {fasceOrarie.map(fascia => (
+                          <SelectItem key={fascia} value={fascia}>{fascia}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -277,7 +264,7 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 )}
               />
             </div>
-            
+
             <FormField
               control={form.control}
               name="tipo_servizio"
@@ -287,13 +274,14 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                   <FormControl>
                     <div className="relative">
                       <Wrench className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input placeholder="Es: Riparazione perdita rubinetto, Installazione condizionatore..." {...field} className="pl-10" disabled={isSubmitting} />
+                      <Input placeholder="Es: Riparazione perdita, Sostituzione caldaia" {...field} className="pl-10" />
                     </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
             <FormField
               control={form.control}
               name="note_aggiuntive"
@@ -304,10 +292,9 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                     <div className="relative">
                       <StickyNote className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Textarea
-                        placeholder="Fornisci dettagli aggiuntivi utili per l'intervento (es. modello dispositivo, accessibilità, urgenza...)"
-                        className="resize-y min-h-[100px] pl-10"
+                        placeholder="Fornisci dettagli aggiuntivi utili per l'intervento..."
+                        className="pl-10 resize-none min-h-[100px]"
                         {...field}
-                        disabled={isSubmitting}
                       />
                     </div>
                   </FormControl>
@@ -315,21 +302,19 @@ export function RichiediInterventoForm({ id_azienda, companyDisplayName }: Richi
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={isLoading} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                {isLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Invio in corso...
-                </>
-              ) : (
-                "Invia Richiesta"
-              )}
-            </Button>
+                ) : (
+                  <Wrench className="mr-2 h-4 w-4" /> // Potresti cambiare icona se preferisci
+                )}
+                {isLoading ? "Invio in corso..." : "Invia Richiesta"}
+              </Button>
+            </div>
           </form>
         </Form>
       </CardContent>
     </Card>
   );
 }
-
-    
