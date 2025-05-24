@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail, Lock, Loader2, Briefcase, Link as LinkIcon, Building, Phone } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, type User as FirebaseUser } from "firebase/auth";
 import { doc, setDoc, serverTimestamp, getDocs, collection, query, where } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
@@ -162,7 +162,6 @@ export function UnifiedRegisterForm() {
 
       console.log("Querying Firestore for slug uniqueness:", finalSlug);
       const aziendeRef = collection(db, "aziende");
-      // Check if slug is taken by ANY company, as this is a new company registration.
       const q = query(aziendeRef, where("slug", "==", finalSlug)); 
       const querySnapshot = await getDocs(q);
       
@@ -183,6 +182,7 @@ export function UnifiedRegisterForm() {
         telefono_contatto: data.companyPhone || null,
         settore_attivita: data.activitySector === "unspecified" || !data.activitySector ? null : data.activitySector,
         sede_citta: data.companyCity || null,
+        contatore_richieste: 0, // Inizializza il contatore a 0
         data_creazione: serverTimestamp(),
       };
 
