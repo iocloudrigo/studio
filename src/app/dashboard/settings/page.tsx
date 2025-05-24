@@ -13,10 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Users, PlusCircle, Mail, BriefcaseIcon, Edit } from "lucide-react";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { auth, db } from "@/lib/firebase"; // storage non è più usato qui
+import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, updateProfile, type User as FirebaseUser } from "firebase/auth";
 import { doc, getDoc, setDoc, query, where, collection, getDocs, addDoc, serverTimestamp, orderBy, updateDoc, deleteDoc } from "firebase/firestore";
-// import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // Non più usato qui
 import { useToast } from "@/hooks/use-toast";
 import {
   Form,
@@ -34,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CollaboratorDetailsSheet } from "@/components/dashboard/settings/CollaboratorDetailsSheet";
+import { CollaboratorDetailsSheet, type CollaboratorEditFormValues } from "@/components/dashboard/settings/CollaboratorDetailsSheet"; // Importa CollaboratorEditFormValues
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -71,14 +70,14 @@ const collaboratorFormSchema = z.object({
   email: z.string().email({ message: "Indirizzo email non valido."}),
   ruolo: z.string().min(1, { message: "Il ruolo è richiesto."}),
 });
-export type CollaboratorFormValues = z.infer<typeof collaboratorFormSchema>; // Exported for sheet
+export type CollaboratorFormValues = z.infer<typeof collaboratorFormSchema>; 
 
-export interface Collaborator { // Exported for sheet
+export interface Collaborator { 
   id: string;
   nome_completo: string;
   email: string;
   ruolo: string;
-  id_azienda: string; // Necessario per le regole Firestore se si fa un get diretto
+  id_azienda: string; 
 }
 
 const generateSlug = (name: string): string => {
@@ -344,17 +343,19 @@ export default function SettingsPage() {
     setIsCollaboratorSheetOpen(true);
   };
 
-  const handleUpdateCollaborator = async (collaboratorId: string, data: { nome_completo: string; ruolo: string }) => {
+  const handleUpdateCollaborator = async (collaboratorId: string, data: CollaboratorEditFormValues) => {
     if (!companyId) return;
+    // Non è necessario un controllo di unicità dell'email qui, in quanto già fatto a livello di DB / policy.
+    // Firebase Auth non è coinvolto, quindi il cambio email in Firestore è atomico e non richiede sincronizzazioni.
     try {
       const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
-      await updateDoc(collaboratorDocRef, data);
+      await updateDoc(collaboratorDocRef, data); // data ora include nome_completo, email, ruolo
       toast({ title: "Successo!", description: "Collaboratore aggiornato."});
       fetchCollaborators(companyId);
     } catch (error: any) {
       console.error("Errore aggiornamento collaboratore:", error);
       toast({ title: "Errore Aggiornamento", description: error.message || "Impossibile aggiornare il collaboratore.", variant: "destructive" });
-      throw error; // Re-throw per gestione nello sheet
+      throw error; 
     }
   };
   
@@ -368,7 +369,7 @@ export default function SettingsPage() {
     } catch (error: any) {
       console.error("Errore eliminazione collaboratore:", error);
       toast({ title: "Errore Eliminazione", description: error.message || "Impossibile eliminare il collaboratore.", variant: "destructive" });
-      throw error; // Re-throw per gestione nello sheet
+      throw error; 
     }
   };
 
@@ -418,9 +419,14 @@ export default function SettingsPage() {
                     <Button 
                         variant="outline" 
                         type="button" 
-                        disabled
+                        disabled // Mantenuto disabilitato come da richiesta precedente
+                        onClick={() => {
+                          // La logica di upload è stata rimossa come da tua indicazione precedente
+                          // Se vuoi riattivarla, andrebbe qui o collegata a un input file
+                          toast({title: "Info", description: "Funzionalità di caricamento logo (Prossimamente)."})
+                        }}
                     >
-                        Cambia Logo (Prossimamente)
+                        Cambia Logo (Prossimamente) 
                     </Button>
                   </div>
                   <Separator />
@@ -756,4 +762,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

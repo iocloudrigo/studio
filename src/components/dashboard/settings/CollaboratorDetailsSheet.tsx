@@ -42,15 +42,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useState, useEffect, type FC } from "react";
 import { Loader2, UserCircle, Mail, BriefcaseIcon, Trash2 } from "lucide-react";
-import type { Collaborator } from "@/app/dashboard/settings/page"; // Assuming Collaborator type is exported from settings page
+import type { Collaborator } from "@/app/dashboard/settings/page"; 
 
 const RUOLI_COLLABORATORI = ["Amministratore", "Operatore", "Responsabile"];
 
 const collaboratorEditSchema = z.object({
   nome_completo: z.string().min(2, { message: "Il nome completo è richiesto." }),
+  email: z.string().email({ message: "Indirizzo email non valido."}), // Aggiunto email
   ruolo: z.string().min(1, { message: "Il ruolo è richiesto." }),
 });
-type CollaboratorEditFormValues = z.infer<typeof collaboratorEditSchema>;
+export type CollaboratorEditFormValues = z.infer<typeof collaboratorEditSchema>; // Esportato per uso esterno se necessario
 
 interface CollaboratorDetailsSheetProps {
   isOpen: boolean;
@@ -75,6 +76,7 @@ export const CollaboratorDetailsSheet: FC<CollaboratorDetailsSheetProps> = ({
     resolver: zodResolver(collaboratorEditSchema),
     defaultValues: {
       nome_completo: "",
+      email: "", // Aggiunto email
       ruolo: "",
     },
   });
@@ -83,6 +85,7 @@ export const CollaboratorDetailsSheet: FC<CollaboratorDetailsSheetProps> = ({
     if (collaborator) {
       form.reset({
         nome_completo: collaborator.nome_completo,
+        email: collaborator.email, // Aggiunto email
         ruolo: collaborator.ruolo,
       });
     }
@@ -93,11 +96,10 @@ export const CollaboratorDetailsSheet: FC<CollaboratorDetailsSheetProps> = ({
   const handleSaveChanges = async (data: CollaboratorEditFormValues) => {
     setIsSaving(true);
     try {
-      await onUpdateCollaborator(collaborator.id, data);
-      onOpenChange(false); // Close sheet on success
+      await onUpdateCollaborator(collaborator.id, data); // 'data' ora include email
+      onOpenChange(false); 
     } catch (error) {
       console.error("Error updating collaborator from sheet:", error);
-      // Toast for error is handled by parent
     } finally {
       setIsSaving(false);
     }
@@ -108,10 +110,9 @@ export const CollaboratorDetailsSheet: FC<CollaboratorDetailsSheetProps> = ({
     try {
       await onDeleteCollaborator(collaborator.id);
       setIsConfirmDeleteDialogOpen(false);
-      onOpenChange(false); // Close sheet on success
+      onOpenChange(false); 
     } catch (error) {
       console.error("Error deleting collaborator from sheet:", error);
-      // Toast for error is handled by parent
     } finally {
       setIsDeleting(false);
     }
@@ -155,20 +156,28 @@ export const CollaboratorDetailsSheet: FC<CollaboratorDetailsSheetProps> = ({
                     </FormItem>
                   )}
                 />
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      type="email"
-                      value={collaborator.email}
-                      readOnly
-                      disabled
-                      className="pl-10 bg-muted/50"
-                    />
-                  </div>
-                  <FormMessage />
-                </FormItem>
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            type="email"
+                            placeholder="mario.rossi@example.com"
+                            {...field}
+                            className="pl-10"
+                            disabled={isSaving} // Non più disabilitato di default
+                          />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <FormField
                   control={form.control}
                   name="ruolo"
