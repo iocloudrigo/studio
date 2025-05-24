@@ -4,7 +4,7 @@ import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Image from "next/image";
-import { CheckCircle, Users, Zap, Target, UserPlus, Link2, ListChecks, CalendarCog, HelpCircle, ChevronRight, Euro, Star, ShieldCheck } from "lucide-react";
+import { CheckCircle, Users, Zap, Target, UserPlus, Link2, ListChecks, CalendarCog, HelpCircle, ChevronRight, Euro, Star, ShieldCheck, Edit, ThumbsUp, Clock, ArrowRightCircle } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -222,29 +222,66 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Perché Scegliere Incastro Section */}
+        {/* Niente più ordini inseriti a mano Section */}
         <section className="py-12 md:py-20 bg-muted/50">
+          <div className="container mx-auto grid max-w-screen-lg items-center gap-8 px-4 md:grid-cols-2 md:gap-12">
+            <div className="order-2 md:order-1">
+              <h2 className="mb-4 text-3xl font-bold text-primary">Niente più ordini inseriti a mano.</h2>
+              <p className="mb-6 text-lg text-muted-foreground">
+                Con Incastro, la richiesta cliente arriva già pronta nel sistema.
+                Zero trascrizioni. Zero errori. Zero perdite di tempo.
+              </p>
+              <ul className="space-y-3 text-muted-foreground">
+                <li className="flex items-start">
+                  <ArrowRightCircle className="mr-3 mt-1 h-5 w-5 flex-shrink-0 text-accent" />
+                  <span>Il cliente compila il form → la richiesta viene creata in automatico</span>
+                </li>
+                <li className="flex items-start">
+                  <ArrowRightCircle className="mr-3 mt-1 h-5 w-5 flex-shrink-0 text-accent" />
+                  <span>L’azienda la trova subito in dashboard, già assegnabile</span>
+                </li>
+                <li className="flex items-start">
+                  <ArrowRightCircle className="mr-3 mt-1 h-5 w-5 flex-shrink-0 text-accent" />
+                  <span>Addio inserimenti manuali, call perse o email dimenticate</span>
+                </li>
+              </ul>
+            </div>
+            <div className="order-1 md:order-2">
+              <Image
+                src="https://placehold.co/600x400.png"
+                alt="Processo automatizzato Incastro"
+                width={600}
+                height={400}
+                className="rounded-lg shadow-lg"
+                data-ai-hint="automation workflow efficiency"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Perché Scegliere Incastro Section */}
+        <section className="py-12 md:py-20">
           <div className="container mx-auto max-w-screen-lg px-4">
             <h2 className="mb-10 text-center text-3xl font-bold text-primary">
               Perché Scegliere Incastro?
             </h2>
             <div className="grid gap-8 md:grid-cols-3">
               <div className="rounded-lg border bg-card p-6 shadow-sm">
-                <Zap className="mb-4 h-10 w-10 text-accent" />
+                <Clock className="mb-4 h-10 w-10 text-accent" /> {/* Cambiata icona */}
                 <h3 className="mb-2 text-xl font-semibold">Efficienza Operativa</h3>
                 <p className="text-sm text-muted-foreground">
                   Automatizza la gestione delle richieste e ottimizza l'assegnazione dei tecnici, riducendo i tempi morti.
                 </p>
               </div>
               <div className="rounded-lg border bg-card p-6 shadow-sm">
-                <Users className="mb-4 h-10 w-10 text-accent" />
+                <Edit className="mb-4 h-10 w-10 text-accent" /> {/* Cambiata icona */}
                 <h3 className="mb-2 text-xl font-semibold">Tutto Organizzato</h3>
                 <p className="text-sm text-muted-foreground">
                   Centralizza le informazioni e facilita la comunicazione. Niente più info sparse tra mille chat.
                 </p>
               </div>
               <div className="rounded-lg border bg-card p-6 shadow-sm">
-                <CheckCircle className="mb-4 h-10 w-10 text-accent" />
+                <ThumbsUp className="mb-4 h-10 w-10 text-accent" /> {/* Cambiata icona */}
                 <h3 className="mb-2 text-xl font-semibold">Soddisfazione Cliente</h3>
                 <p className="text-sm text-muted-foreground">
                   Offri un servizio più rapido e trasparente, con aggiornamenti puntuali e una gestione professionale.
@@ -255,7 +292,7 @@ export default function LandingPage() {
         </section>
 
         {/* FAQ Section */}
-        <section className="py-12 md:py-20">
+        <section className="py-12 md:py-20 bg-muted/50">
           <div className="container mx-auto max-w-screen-lg px-4">
             <div className="mb-12 text-center">
                 <HelpCircle className="mx-auto h-12 w-12 text-primary mb-4" />
@@ -282,7 +319,7 @@ export default function LandingPage() {
         </section>
 
         {/* Pricing Section */}
-        <section className="py-12 md:py-20 bg-muted/50">
+        <section className="py-12 md:py-20">
           <div className="container mx-auto max-w-screen-lg px-4">
             <div className="mb-12 text-center">
               <Euro className="mx-auto h-12 w-12 text-primary mb-4" />
@@ -348,7 +385,7 @@ export default function LandingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t py-8 text-center">
+      <footer className="border-t py-8 text-center bg-muted/50"> {/* Aggiunto bg-muted/50 */}
         <div className="container mx-auto max-w-screen-lg px-4">
           <p className="text-sm text-muted-foreground">
             &copy; {new Date().getFullYear()} Incastro. Tutti i diritti riservati.
