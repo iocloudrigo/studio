@@ -169,9 +169,14 @@ export default function LandingPage() {
         {/* Come Funziona Section */}
         <section className="py-12 md:py-20">
           <div className="container mx-auto max-w-screen-lg px-4">
-            <h2 className="mb-12 text-center text-3xl font-bold text-primary">
-              Come Funziona Incastro?
-            </h2>
+            <div className="mb-10 text-center">
+              <h2 className="text-3xl font-bold text-primary">
+                Come Funziona Incastro?
+              </h2>
+              <p className="mt-2 text-lg text-muted-foreground">
+                Bastano 4 step per organizzare tutto il tuo lavoro.
+              </p>
+            </div>
             <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
               <div className="flex flex-col items-center text-center p-4">
                 <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-accent">
@@ -186,9 +191,9 @@ export default function LandingPage() {
                 <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-accent">
                   <Link2 className="h-8 w-8" />
                 </div>
-                <h3 className="mb-2 text-xl font-semibold">2. Link Unico</h3>
+                <h3 className="mb-2 text-xl font-semibold">2. Link Diretto</h3>
                 <p className="text-sm text-muted-foreground">
-                  Ottieni un link personalizzato da condividere con i tuoi clienti per ricevere richieste.
+                  Ottieni un link personalizzato da dare ai clienti per ricevere richieste.
                 </p>
               </div>
               <div className="flex flex-col items-center text-center p-4">
