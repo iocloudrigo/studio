@@ -86,10 +86,11 @@ export default function DashboardPage() {
 
       // Fetch Stats
       try {
+        // Query for active requests: stato == "In Attesa"
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "not-in", ["completata", "annullata"]) 
+          where("stato", "==", "In Attesa") // Case-sensitive match
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
 
@@ -135,7 +136,7 @@ export default function DashboardPage() {
             id: doc.id,
             customer: data.nome_cliente || "N/D", 
             service: data.tipo_servizio || "N/D", 
-            status: data.stato || "N/D", 
+            status: data.stato || "N/D", // Make sure 'stato' field exists
             created_at: data.created_at as Timestamp | undefined,
             note_aggiuntive: data.note_aggiuntive || "",
             indirizzo_intervento: data.indirizzo_intervento || "",
@@ -167,21 +168,21 @@ export default function DashboardPage() {
       await updateDoc(requestDocRef, { stato: newStatus });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
+      // Optimistically update local state for recent requests
       setRecentRequests(prevRequests =>
         prevRequests.map(req =>
           req.id === requestId ? { ...req, status: newStatus } : req
         )
       );
-      // Refetch stats to update the "Active Requests" count
-      setStats(prevStats => ({...prevStats, activeRequests: newStatus !== "completata" && newStatus !== "annullata" ? prevStats.activeRequests : prevStats.activeRequests -1}));
+      
+      // Refetch stats to update the "Active Requests" count accurately from server
       const activeRequestsQuery = query(
         collection(db, "richieste_clienti"),
         where("id_azienda", "==", companyId),
-        where("stato", "not-in", ["completata", "annullata"]) 
+        where("stato", "==", "In Attesa") // Consistent with initial fetch
       );
       const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
       setStats(prevStats => ({...prevStats, activeRequests: activeRequestsSnap.data().count }));
-
 
     } catch (error) {
       console.error("Error updating request status:", error);
@@ -218,7 +219,7 @@ export default function DashboardPage() {
             ) : (
               <div className="text-2xl font-bold">{stats.activeRequests}</div>
             )}
-            <p className="text-xs text-muted-foreground">Interventi in corso o da assegnare</p>
+            <p className="text-xs text-muted-foreground">Richieste con stato "In Attesa"</p>
           </CardContent>
         </Card>
         <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
@@ -286,7 +287,7 @@ export default function DashboardPage() {
                         <span className={`px-2 py-1 text-xs rounded-full capitalize ${
                           req.status === "completata" ? "bg-green-100 text-green-700" :
                           req.status === "assegnata" ? "bg-blue-100 text-blue-700" :
-                          req.status === "in attesa" ? "bg-orange-100 text-orange-700" :
+                          req.status === "in attesa" || req.status === "In Attesa" ? "bg-orange-100 text-orange-700" : // Adjusted for "In Attesa"
                           req.status === "programmata" ? "bg-yellow-100 text-yellow-700" :
                           req.status === "in corso" ? "bg-indigo-100 text-indigo-700" :
                           req.status === "annullata" ? "bg-red-100 text-red-700" :
