@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { FileText, CalendarDays, PlusCircle, Lightbulb, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton"; 
-import { RequestDetailsSheet } from "@/components/dashboard/requests/RequestDetailsSheet"; // Import the new sheet
+import { RequestDetailsSheet } from "@/components/dashboard/requests/RequestDetailsSheet";
 import { useToast } from "@/hooks/use-toast";
 
 import { auth, db } from "@/lib/firebase";
@@ -86,11 +86,10 @@ export default function DashboardPage() {
 
       // Fetch Stats
       try {
-        const activeRequestStatuses = ["in attesa", "assegnata", "programmata", "in corso"];
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "in", activeRequestStatuses) 
+          where("stato", "not-in", ["completata", "annullata"]) 
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
 
@@ -165,12 +164,6 @@ export default function DashboardPage() {
     }
     try {
       const requestDocRef = doc(db, "richieste_clienti", requestId);
-      // Optional: Add a getDoc here to verify ownership if Firestore rules are not strict enough
-      // const requestDocSnap = await getDoc(requestDocRef);
-      // if (!requestDocSnap.exists() || requestDocSnap.data()?.id_azienda !== companyId) {
-      //   toast({ title: "Operazione non permessa", description: "Non hai i permessi per modificare questa richiesta.", variant: "destructive" });
-      //   throw new Error("Permission denied or request not found");
-      // }
       await updateDoc(requestDocRef, { stato: newStatus });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
@@ -179,6 +172,17 @@ export default function DashboardPage() {
           req.id === requestId ? { ...req, status: newStatus } : req
         )
       );
+      // Refetch stats to update the "Active Requests" count
+      setStats(prevStats => ({...prevStats, activeRequests: newStatus !== "completata" && newStatus !== "annullata" ? prevStats.activeRequests : prevStats.activeRequests -1}));
+      const activeRequestsQuery = query(
+        collection(db, "richieste_clienti"),
+        where("id_azienda", "==", companyId),
+        where("stato", "not-in", ["completata", "annullata"]) 
+      );
+      const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
+      setStats(prevStats => ({...prevStats, activeRequests: activeRequestsSnap.data().count }));
+
+
     } catch (error) {
       console.error("Error updating request status:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare lo stato della richiesta.", variant: "destructive" });
