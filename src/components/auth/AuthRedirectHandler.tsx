@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
@@ -9,21 +9,33 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
 const LOGIN_ROUTE = '/';
-const REGISTER_ROUTE_COMPLETE_COMPANY = '/registra-azienda'; // Legacy, ora dovrebbe essere /register
-const REGISTER_ROUTE_USER_ONLY = '/register'; // Pagina di registrazione unificata
+const REGISTER_ROUTE_USER_ONLY = '/register';
 const DASHBOARD_BASE_ROUTE = '/dashboard';
-// Route pubbliche che gli utenti loggati (anche senza azienda) possono accedere senza essere reindirizzati a /register
-const PUBLIC_ROUTES_ALLOWING_LOGGED_IN_NO_COMPANY = ['/richiedi-intervento'];
+const ALWAYS_PUBLIC_ROUTES = ['/richiedi-intervento']; // Rotte sempre pubbliche
 
 export function AuthRedirectHandler({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [isLoading, setIsLoading] = useState(true);
+  const authCheckProcessed = useRef(false); // Riferimento per tracciare se il callback di onAuthStateChanged è stato eseguito
 
   useEffect(() => {
     console.log("[AuthRedirectHandler] useEffect triggered. Pathname:", pathname);
+    authCheckProcessed.current = false; // Resetta il flag ad ogni cambio di pathname
+
+    // Timeout di sicurezza per sbloccare il caricamento se Firebase non risponde
+    const failsafeTimeoutId = setTimeout(() => {
+      if (!authCheckProcessed.current) {
+        console.warn("[AuthRedirectHandler] Timeout di sicurezza raggiunto. Lo stato di autenticazione non è stato risolto. Sblocco del caricamento.");
+        setIsLoading(false);
+      }
+    }, 7000); // Timeout di 7 secondi
+
     const unsubscribe = onAuthStateChanged(auth, async (user: FirebaseUser | null) => {
+      authCheckProcessed.current = true; // Segna che il callback è stato chiamato
+      clearTimeout(failsafeTimeoutId); // Annulla il timeout di sicurezza
       console.log("[AuthRedirectHandler] onAuthStateChanged callback started. User UID:", user?.uid);
+
       try {
         if (user) {
           console.log("[AuthRedirectHandler] User is authenticated. UID:", user.uid);
@@ -32,69 +44,55 @@ export function AuthRedirectHandler({ children }: { children: React.ReactNode })
           const companyExists = companyDocSnap.exists();
           console.log("[AuthRedirectHandler] Company exists for user:", companyExists);
 
-          if (pathname === LOGIN_ROUTE) {
-            console.log("[AuthRedirectHandler] User on login page. No auto redirect. LoginForm will handle action.");
-            // Non reindirizzare automaticamente se l'utente è sulla pagina di login.
-            // Il LoginForm gestirà il redirect dopo un tentativo di login.
-          } else if (pathname === REGISTER_ROUTE_USER_ONLY) {
+          if (pathname.startsWith(DASHBOARD_BASE_ROUTE)) {
+            if (!companyExists) {
+              console.log("[AuthRedirectHandler] User on dashboard but NO company. Redirecting to register.");
+              router.replace(REGISTER_ROUTE_USER_ONLY);
+            } else {
+              console.log("[AuthRedirectHandler] User on dashboard and HAS company. Allowing stay.");
+            }
+          } else if (pathname === LOGIN_ROUTE || pathname === REGISTER_ROUTE_USER_ONLY) {
             if (companyExists) {
-              console.log(`[AuthRedirectHandler] Authenticated user with company on ${REGISTER_ROUTE_USER_ONLY}. Redirecting to dashboard.`);
+              console.log(`[AuthRedirectHandler] Authenticated user with company on ${pathname}. Redirecting to dashboard.`);
               router.replace(DASHBOARD_BASE_ROUTE);
             } else {
-              console.log(`[AuthRedirectHandler] Authenticated user without company on ${REGISTER_ROUTE_USER_ONLY}. Allowing to stay.`);
-              // Permetti all'utente di rimanere su /register se non ha un'azienda (es. dopo login Google)
+              console.log(`[AuthRedirectHandler] Authenticated user on ${pathname} but NO company. Allowing stay (user will complete registration or login again).`);
             }
-          } else if (pathname.startsWith(DASHBOARD_BASE_ROUTE)) {
-            if (!companyExists) {
-              console.log("[AuthRedirectHandler] Authenticated user on dashboard without company. Redirecting to register.");
-              router.replace(REGISTER_ROUTE_USER_ONLY);
-            } else {
-              console.log("[AuthRedirectHandler] Authenticated user with company on dashboard. Allowing to stay.");
-            }
-          } else if (PUBLIC_ROUTES_ALLOWING_LOGGED_IN_NO_COMPANY.some(route => pathname.startsWith(route))) {
+          } else if (ALWAYS_PUBLIC_ROUTES.some(route => pathname.startsWith(route))) {
             console.log(`[AuthRedirectHandler] Authenticated user on allowed public route ${pathname}. No redirect needed.`);
           } else {
-            // Utente autenticato su una pagina non gestita specificamente
-            if (!companyExists) {
-              console.log(`[AuthRedirectHandler] Authenticated user on ${pathname} without company. Redirecting to register.`);
-              router.replace(REGISTER_ROUTE_USER_ONLY);
-            } else {
-              console.log(`[AuthRedirectHandler] Authenticated user on ${pathname} with company. Assuming valid page or allowing stay.`);
-            }
+            // Se l'utente è autenticato e su una pagina non gestita esplicitamente,
+            // e ha un'azienda, potrebbe essere sensato reindirizzarlo alla dashboard.
+            // Se non ha un'azienda, alla pagina di registrazione.
+            // Per ora, per minimizzare redirect aggressivi, lo lasciamo stare se non è una dashboard.
+            console.log(`[AuthRedirectHandler] Authenticated user on unhandled page ${pathname}. Company exists: ${companyExists}. Allowing stay for now.`);
           }
         } else { // User is NOT authenticated
-          console.log("[AuthRedirectHandler] User is not authenticated.");
-          const isDashboardRoute = pathname.startsWith(DASHBOARD_BASE_ROUTE);
-          // La pagina /register è accessibile anche da non autenticati
-          const isSensitiveRegisterRoute = pathname.startsWith(REGISTER_ROUTE_COMPLETE_COMPANY) && pathname !== REGISTER_ROUTE_USER_ONLY;
-
-
-          if (isDashboardRoute || isSensitiveRegisterRoute) {
-             console.log(`[AuthRedirectHandler] Unauthenticated user on protected route ${pathname}. Redirecting to login.`);
+          console.log("[AuthRedirectHandler] User is NOT authenticated.");
+          if (pathname.startsWith(DASHBOARD_BASE_ROUTE)) {
+            console.log(`[AuthRedirectHandler] Unauthenticated user on protected dashboard route ${pathname}. Redirecting to login.`);
             router.replace(LOGIN_ROUTE);
-          } else if (pathname === LOGIN_ROUTE) {
-             console.log("[AuthRedirectHandler] Unauthenticated user on login page. No redirect needed.");
-          } else if (pathname === REGISTER_ROUTE_USER_ONLY){
-            console.log("[AuthRedirectHandler] Unauthenticated user on register page. No redirect needed.");
-          }
-           else {
-            console.log(`[AuthRedirectHandler] Unauthenticated user on public route ${pathname}. No redirect needed.`);
+          } else {
+            console.log(`[AuthRedirectHandler] Unauthenticated user on public/auth route ${pathname}. Allowing stay.`);
           }
         }
       } catch (error) {
         console.error("[AuthRedirectHandler] Error processing auth state:", error);
-        // Potresti voler mostrare un errore all'utente qui o reindirizzare a una pagina di errore generica
+        // L'errore è loggato, isLoading sarà gestito dal blocco finally
       } finally {
-        console.log("[AuthRedirectHandler] Auth processing finished. Setting isLoading to false.");
-        setIsLoading(false);
+        if (isLoading) { // Controlla se isLoading è ancora true per evitare chiamate multiple se il componente si ri-renderizza velocemente
+            console.log("[AuthRedirectHandler] Auth processing finished (within onAuthStateChanged). Setting isLoading to false.");
+            setIsLoading(false);
+        }
       }
     });
 
     return () => {
-      console.log("[AuthRedirectHandler] Unsubscribing from onAuthStateChanged.");
+      console.log("[AuthRedirectHandler] Unsubscribing from onAuthStateChanged and clearing timeout.");
+      clearTimeout(failsafeTimeoutId);
       unsubscribe();
     };
-  }, [pathname, router]);
+  }, [pathname, router]); // Dipendenze per rieseguire l'effetto se cambiano
 
   if (isLoading) {
     return (
