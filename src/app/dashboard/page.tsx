@@ -72,7 +72,7 @@ export default function DashboardPage() {
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("status", "in", ["Nuova", "In attesa", "Assegnato"]) // Statuses not 'Completato'
+          where("status", "not-in", ["Completato", "Annullato"]) // Statuses not 'Completato' or 'Annullato'
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
 
@@ -80,13 +80,15 @@ export default function DashboardPage() {
         const pendingAppointmentsQuery = query(
           collection(db, "interventi_confermati"),
           where("id_azienda", "==", companyId),
-          where("data_ora", ">", now)
+          where("data_ora", ">", now) 
+          // Ideally, also filter by statuses that mean "pending" e.g., not "Completato" or "Annullato"
         );
         const pendingAppointmentsSnap = await getCountFromServer(pendingAppointmentsQuery);
 
         const techniciansQuery = query(
           collection(db, "tecnici"),
           where("id_azienda", "==", companyId)
+          // where("status", "==", "Disponibile") // If you only want to count available ones
         );
         const techniciansSnap = await getCountFromServer(techniciansQuery);
 
@@ -107,7 +109,7 @@ export default function DashboardPage() {
         const requestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          orderBy("created_at", "desc"), // Ensure 'created_at' field (Timestamp) exists
+          orderBy("created_at", "desc"), 
           limit(5)
         );
         const requestsSnapshot = await getDocs(requestsQuery);
@@ -115,9 +117,9 @@ export default function DashboardPage() {
           const data = doc.data();
           return {
             id: doc.id,
-            customer: data.customer || "N/D",
-            service: data.service || data.tipo_servizio || "N/D", // Prioritize service, fallback to tipo_servizio
-            status: data.status || "N/D",
+            customer: data.customer || data.nome_cliente || "N/D", // Check common field names
+            service: data.service || data.tipo_servizio || "N/D", 
+            status: data.status || data.stato || "N/D", // Check common field names
           };
         }) as RecentRequest[];
         setRecentRequests(fetchedRequests);
@@ -164,7 +166,7 @@ export default function DashboardPage() {
         </Card>
         <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Appuntamenti Pendenti</CardTitle>
+            <CardTitle className="text-sm font-medium">Appuntamenti Futuri</CardTitle> 
             <CalendarDays className="h-5 w-5 text-primary" />
           </CardHeader>
           <CardContent>
@@ -173,13 +175,13 @@ export default function DashboardPage() {
             ) : (
               <div className="text-2xl font-bold">{stats.pendingAppointments}</div>
             )}
-            <p className="text-xs text-muted-foreground">Da confermare o programmare</p>
+            <p className="text-xs text-muted-foreground">Interventi programmati</p>
           </CardContent>
         </Card>
         <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tecnici Registrati</CardTitle> {/* Changed title slightly */}
-            <Users className="h-5 w-5 text-primary" /> {/* Changed icon */}
+            <CardTitle className="text-sm font-medium">Tecnici Registrati</CardTitle>
+            <Users className="h-5 w-5 text-primary" />
           </CardHeader>
           <CardContent>
             {loadingStats ? (
@@ -212,7 +214,7 @@ export default function DashboardPage() {
                   <tr className="border-b">
                     <th className="p-3 text-left text-sm font-semibold text-muted-foreground">ID</th>
                     <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Cliente</th>
-                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Sommario</th>
+                    <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Servizio</th>
                     <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Stato</th>
                     <th className="p-3 text-right text-sm font-semibold text-muted-foreground">Azioni</th>
                   </tr>
@@ -220,7 +222,7 @@ export default function DashboardPage() {
                 <tbody>
                   {recentRequests.map((req) => (
                     <tr key={req.id} className="border-b hover:bg-muted/50">
-                      <td className="p-3 text-sm font-medium text-primary">{req.id.substring(0, 6)}...</td> {/* Shorten ID if too long */}
+                      <td className="p-3 text-sm font-medium text-primary">{req.id.substring(0, 6)}...</td>
                       <td className="p-3 text-sm">{req.customer}</td>
                       <td className="p-3 text-sm">{req.service}</td>
                       <td className="p-3 text-sm">
@@ -229,7 +231,8 @@ export default function DashboardPage() {
                           req.status === "Assegnato" ? "bg-blue-100 text-blue-700" :
                           req.status === "In attesa" ? "bg-orange-100 text-orange-700" :
                           req.status === "Nuova" ? "bg-purple-100 text-purple-700" :
-                          "bg-yellow-100 text-yellow-700" // Fallback for other statuses
+                          req.status === "Annullato" ? "bg-red-100 text-red-700" :
+                          "bg-gray-100 text-gray-700" 
                         }`}>
                           {req.status}
                         </span>
@@ -281,4 +284,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
