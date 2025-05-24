@@ -90,7 +90,7 @@ export default function DashboardPage() {
         const activeRequestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "==", "In Attesa") // Case-sensitive match for "In Attesa"
+          where("stato", "==", "in attesa") // CORRETTO: usa "in attesa" (minuscolo)
         );
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
         setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
@@ -199,7 +199,7 @@ export default function DashboardPage() {
             const activeRequestsQuery = query(
             collection(db, "richieste_clienti"),
             where("id_azienda", "==", companyId),
-            where("stato", "==", "In Attesa") 
+            where("stato", "==", "in attesa") // CORRETTO: usa "in attesa" (minuscolo)
             );
             const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
             setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
@@ -246,7 +246,7 @@ export default function DashboardPage() {
             ) : (
               <div className="text-2xl font-bold">{stats.activeRequests ?? 0}</div>
             )}
-            <p className="text-xs text-muted-foreground">Richieste con stato "In Attesa"</p>
+            <p className="text-xs text-muted-foreground">Richieste con stato "in attesa"</p>
           </CardContent>
         </Card>
         <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
