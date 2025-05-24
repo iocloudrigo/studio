@@ -234,9 +234,9 @@ export default function LandingPage() {
               </div>
               <div className="rounded-lg border bg-card p-6 shadow-sm">
                 <Users className="mb-4 h-10 w-10 text-accent" />
-                <h3 className="mb-2 text-xl font-semibold">Miglior Collaborazione</h3>
+                <h3 className="mb-2 text-xl font-semibold">Tutto al suo posto, per tutti</h3>
                 <p className="text-sm text-muted-foreground">
-                  Centralizza le informazioni e facilita la comunicazione tra amministrazione, tecnici e clienti.
+                  Centralizza le informazioni e facilita la comunicazione. Niente più info sparse tra mille chat.
                 </p>
               </div>
               <div className="rounded-lg border bg-card p-6 shadow-sm">
