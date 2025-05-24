@@ -11,11 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Users, PlusCircle, Mail, BriefcaseIcon } from "lucide-react";
-import { useEffect, useState, useCallback } from "react";
-import { auth, db } from "@/lib/firebase";
+import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Users, PlusCircle, Mail, BriefcaseIcon, UploadCloud } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { auth, db, storage } from "@/lib/firebase";
 import { onAuthStateChanged, updateProfile, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, setDoc, query, where, collection, getDocs, addDoc, serverTimestamp, orderBy } from "firebase/firestore";
+import { doc, getDoc, setDoc, query, where, collection, getDocs, addDoc, serverTimestamp, orderBy, updateDoc } from "firebase/firestore";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
 import {
   Form,
@@ -65,10 +66,8 @@ interface Collaborator {
   nome_completo: string;
   email: string;
   ruolo: string;
-  // data_creazione: Timestamp; // Consider adding if needed for display
 }
 
-// Helper per generare slug
 const generateSlug = (name: string): string => {
   if (!name) return "";
   return name
@@ -95,6 +94,9 @@ export default function SettingsPage() {
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(false);
   const [isAddingCollaborator, setIsAddingCollaborator] = useState(false);
+
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
 
   const companyForm = useForm<CompanyFormValues>({
@@ -162,15 +164,15 @@ export default function SettingsPage() {
               telefono_contatto: data.telefono_contatto || "",
               indirizzo_completo: data.indirizzo_completo || data.sede_citta || "",
               slug: data.slug || "",
-              logoUrl: data.logoUrl || "https://placehold.co/100x100.png?text=Logo",
+              logoUrl: data.logoUrl || "",
             };
             setCompanyData(loadedCompanyData);
             companyForm.reset(loadedCompanyData);
             if (data.slug) setIsSlugManuallyEditedCompany(true);
-            fetchCollaborators(user.uid); // Fetch collaborators after company ID is set
+            fetchCollaborators(user.uid); 
           } else {
              companyForm.reset({
-                logoUrl: "https://placehold.co/100x100.png?text=Logo",
+                logoUrl: "",
                 nome: "",
                 email_contatto: user.email || "",
                 slug: generateSlug(user.displayName || "mia-azienda"),
@@ -248,7 +250,7 @@ export default function SettingsPage() {
         telefono_contatto: validatedData.telefono_contatto || null,
         indirizzo_completo: validatedData.indirizzo_completo || null,
         slug: validatedData.slug,
-        logoUrl: validatedData.logoUrl || "https://placehold.co/100x100.png?text=Logo",
+        logoUrl: validatedData.logoUrl || null,
         email_admin: currentUser.email,
         uid_admin: currentUser.uid,
       };
@@ -256,8 +258,8 @@ export default function SettingsPage() {
       await setDoc(companyDocRef, dataToUpdate, { merge: true });
       
       setCompanyData(prev => ({...prev, ...dataToUpdate}));
-      companyForm.reset(dataToUpdate); // Reset form with saved data including potentially normalized slug
-      setIsSlugManuallyEditedCompany(true); // Assume slug is now "manual" after save
+      companyForm.reset(dataToUpdate); 
+      setIsSlugManuallyEditedCompany(true); 
       toast({ title: "Successo!", description: "Dati aziendali aggiornati." });
     } catch (error: any) {
       console.error("Errore salvataggio dati azienda:", error);
@@ -299,7 +301,6 @@ export default function SettingsPage() {
     }
     setIsAddingCollaborator(true);
     try {
-      // Check if email already exists for this company
       const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", companyId), where("email", "==", data.email));
       const emailCheckSnapshot = await getDocs(q);
       if (!emailCheckSnapshot.empty) {
@@ -317,7 +318,7 @@ export default function SettingsPage() {
       await addDoc(collection(db, "collaboratori_azienda"), collaboratorData);
       toast({ title: "Successo!", description: "Nuovo collaboratore aggiunto." });
       collaboratorForm.reset();
-      fetchCollaborators(companyId); // Refresh the list
+      fetchCollaborators(companyId); 
     } catch (error: any) {
       console.error("Errore aggiunta collaboratore:", error);
       toast({ title: "Errore Aggiunta", description: error.message || "Impossibile aggiungere il collaboratore.", variant: "destructive" });
@@ -372,7 +373,7 @@ export default function SettingsPage() {
                     <Button 
                         variant="outline" 
                         type="button" 
-                        disabled 
+                        disabled
                     >
                         Cambia Logo (Prossimamente)
                     </Button>
@@ -489,62 +490,61 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="profile">
-          <Card className="shadow-lg mb-6">
-            <CardHeader>
-              <CardTitle>Profilo Utente Amministratore</CardTitle>
-              <CardDescription>Gestisci le informazioni del tuo account personale.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...profileForm}>
-                <form onSubmit={profileForm.handleSubmit(onSubmitProfile)} className="space-y-6">
-                  <div className="flex items-center gap-4">
-                    <Avatar className="h-20 w-20">
-                      <AvatarImage src={currentUser?.photoURL || "https://placehold.co/100x100.png"} alt={profileForm.getValues("displayName")} data-ai-hint="person avatar"/>
-                      <AvatarFallback>{(profileForm.getValues("displayName") || currentUser?.email?.substring(0,1) || "U").toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <Button variant="outline" type="button" disabled>Cambia Foto Profilo (Prossimamente)</Button>
-                  </div>
-                  <Separator />
-                  <FormField
-                    control={profileForm.control}
-                    name="displayName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nome Completo (Visibile Internamente)</FormLabel>
-                        <FormControl>
-                          <Input {...field} disabled={isSavingProfile} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div>
-                    <Label htmlFor="userEmail">Email (Login)</Label>
-                    <Input id="userEmail" type="email" value={currentUser?.email || ""} disabled />
-                  </div>
-                  <div>
-                    <Label htmlFor="userRole">Ruolo Principale</Label>
-                    <Input id="userRole" value={"Amministratore Azienda"} disabled />
-                  </div>
-                  <Button type="submit" disabled={isSavingProfile} className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                     {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Salva Modifiche Profilo
-                  </Button>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
+          <div className="grid md:grid-cols-2 gap-6 mb-6">
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle>Profilo Utente Amministratore</CardTitle>
+                <CardDescription>Gestisci le informazioni del tuo account personale.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Form {...profileForm}>
+                  <form onSubmit={profileForm.handleSubmit(onSubmitProfile)} className="space-y-6">
+                    <div className="flex items-center gap-4">
+                      <Avatar className="h-20 w-20">
+                        <AvatarImage src={currentUser?.photoURL || "https://placehold.co/100x100.png"} alt={profileForm.getValues("displayName")} data-ai-hint="person avatar"/>
+                        <AvatarFallback>{(profileForm.getValues("displayName") || currentUser?.email?.substring(0,1) || "U").toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <Button variant="outline" type="button" disabled>Cambia Foto Profilo (Prossimamente)</Button>
+                    </div>
+                    <Separator />
+                    <FormField
+                      control={profileForm.control}
+                      name="displayName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Nome Completo (Visibile Internamente)</FormLabel>
+                          <FormControl>
+                            <Input {...field} disabled={isSavingProfile} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div>
+                      <Label htmlFor="userEmail">Email (Login)</Label>
+                      <Input id="userEmail" type="email" value={currentUser?.email || ""} disabled />
+                    </div>
+                    <div>
+                      <Label htmlFor="userRole">Ruolo Principale</Label>
+                      <Input id="userRole" value={"Amministratore Azienda"} disabled />
+                    </div>
+                    <Button type="submit" disabled={isSavingProfile} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                       {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Salva Modifiche Profilo
+                    </Button>
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
 
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle>Gestione Utenti Collaboratori</CardTitle>
-              <CardDescription>Aggiungi e visualizza i collaboratori che possono gestire le richieste per la tua azienda.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...collaboratorForm}>
-                <form onSubmit={collaboratorForm.handleSubmit(onAddCollaborator)} className="space-y-6 mb-8 p-4 border rounded-lg">
-                  <h3 className="text-lg font-medium">Aggiungi Nuovo Collaboratore</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle>Aggiungi Nuovo Collaboratore</CardTitle>
+                <CardDescription>Inserisci i dettagli per un nuovo utente collaboratore.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Form {...collaboratorForm}>
+                  <form onSubmit={collaboratorForm.handleSubmit(onAddCollaborator)} className="space-y-6">
                     <FormField
                       control={collaboratorForm.control}
                       name="nome_completo"
@@ -577,73 +577,76 @@ export default function SettingsPage() {
                         </FormItem>
                       )}
                     />
-                  </div>
-                  <FormField
-                    control={collaboratorForm.control}
-                    name="ruolo"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Ruolo</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={isAddingCollaborator}>
-                          <FormControl>
-                            <div className="relative">
-                              <BriefcaseIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                              <SelectTrigger className="pl-10">
-                                <SelectValue placeholder="Seleziona un ruolo..." />
-                              </SelectTrigger>
-                            </div>
-                          </FormControl>
-                          <SelectContent>
-                            {RUOLI_COLLABORATORI.map(ruolo => (
-                              <SelectItem key={ruolo} value={ruolo}>{ruolo}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button type="submit" disabled={isAddingCollaborator} className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                    {isAddingCollaborator ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-                    Aggiungi Collaboratore
-                  </Button>
-                </form>
-              </Form>
-              
-              <Separator className="my-6" />
+                    <FormField
+                      control={collaboratorForm.control}
+                      name="ruolo"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Ruolo</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value} disabled={isAddingCollaborator}>
+                            <FormControl>
+                              <div className="relative">
+                                <BriefcaseIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <SelectTrigger className="pl-10">
+                                  <SelectValue placeholder="Seleziona un ruolo..." />
+                                </SelectTrigger>
+                              </div>
+                            </FormControl>
+                            <SelectContent>
+                              {RUOLI_COLLABORATORI.map(ruolo => (
+                                <SelectItem key={ruolo} value={ruolo}>{ruolo}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button type="submit" disabled={isAddingCollaborator} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                      {isAddingCollaborator ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                      Aggiungi Collaboratore
+                    </Button>
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+          </div>
 
-              <div>
-                <h3 className="text-lg font-medium mb-4">Collaboratori Registrati</h3>
-                {isLoadingCollaborators ? (
-                  <div className="flex items-center justify-center p-6">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="ml-2 text-muted-foreground">Caricamento collaboratori...</p>
-                  </div>
-                ) : collaborators.length > 0 ? (
-                  <ul className="space-y-3">
-                    {collaborators.map(collab => (
-                      <li key={collab.id} className="flex items-center justify-between p-3 border rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
-                        <div className="flex items-center gap-3">
-                           <Avatar className="h-9 w-9">
-                              <AvatarImage src={`https://placehold.co/40x40.png?text=${collab.nome_completo.substring(0,1).toUpperCase()}`} alt={collab.nome_completo} data-ai-hint="person letter"/>
-                              <AvatarFallback>{collab.nome_completo.substring(0,2).toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                          <div>
-                            <p className="font-medium">{collab.nome_completo}</p>
-                            <p className="text-xs text-muted-foreground">{collab.email}</p>
-                          </div>
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>Collaboratori Registrati</CardTitle>
+              <CardDescription>Elenco dei collaboratori che possono gestire le richieste per la tua azienda.</CardDescription>
+            </CardHeader>
+            <CardContent>              
+              {isLoadingCollaborators ? (
+                <div className="flex items-center justify-center p-6">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className="ml-2 text-muted-foreground">Caricamento collaboratori...</p>
+                </div>
+              ) : collaborators.length > 0 ? (
+                <ul className="space-y-3">
+                  {collaborators.map(collab => (
+                    <li key={collab.id} className="flex items-center justify-between p-3 border rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center gap-3">
+                         <Avatar className="h-9 w-9">
+                            <AvatarImage src={`https://placehold.co/40x40.png?text=${collab.nome_completo.substring(0,1).toUpperCase()}`} alt={collab.nome_completo} data-ai-hint="person letter"/>
+                            <AvatarFallback>{collab.nome_completo.substring(0,2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                        <div>
+                          <p className="font-medium">{collab.nome_completo}</p>
+                          <p className="text-xs text-muted-foreground">{collab.email}</p>
                         </div>
-                        <span className="text-sm bg-secondary text-secondary-foreground px-2 py-1 rounded-full">{collab.ruolo}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-center py-6 text-muted-foreground">
-                    <Users className="mx-auto h-10 w-10 mb-2" />
-                    <p>Nessun collaboratore aggiunto per questa azienda.</p>
-                  </div>
-                )}
-              </div>
+                      </div>
+                      <span className="text-sm bg-secondary text-secondary-foreground px-2 py-1 rounded-full">{collab.ruolo}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-center py-6 text-muted-foreground">
+                  <Users className="mx-auto h-10 w-10 mb-2" />
+                  <p>Nessun collaboratore aggiunto per questa azienda.</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -693,5 +696,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-    
