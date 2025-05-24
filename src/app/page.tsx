@@ -141,7 +141,7 @@ export default function LandingPage() {
                 </div>
                 <h3 className="mb-2 text-xl font-semibold">4. Organizza</h3>
                 <p className="text-sm text-muted-foreground">
-                  Gestisci interventi, assegna tecnici, programma appuntamenti e monitora lo stato.
+                  Gestisci interventi, assegna tecnici e monitora lo stato.
                 </p>
               </div>
             </div>
