@@ -336,7 +336,10 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
-            <p className="mt-8 text-center text-sm text-muted-foreground">
+            <p className="mt-8 text-center text-muted-foreground font-semibold">
+              Provalo per un mese. Passa all'annuale quando vuoi, senza perdere dati.
+            </p>
+            <p className="mt-4 text-center text-sm text-muted-foreground">
               Tutti i prezzi sono IVA esclusa. Nessun contratto a lungo termine, disdici quando vuoi (per il piano mensile).
             </p>
           </div>
