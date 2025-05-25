@@ -27,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, User, Phone, Mail, MapPin, CalendarDays, Clock, StickyNote, Edit3, PlusCircle } from "lucide-react"; // Aggiunta Mail
+import { Loader2, User, Phone, Mail, MapPin, CalendarDays, Clock, StickyNote, Edit3, PlusCircle } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import type { User as FirebaseUser } from "firebase/auth";
@@ -36,7 +36,7 @@ import { onAuthStateChanged } from "firebase/auth";
 const NewRequestFormSchema = z.object({
   nome_cliente: z.string().min(1, "Nome e Cognome del cliente è obbligatorio."),
   telefono_cliente: z.string().min(1, "Numero di telefono è obbligatorio."),
-  email_cliente: z.string().email("Indirizzo email non valido.").optional().or(z.literal("")), // Email opzionale ma valida se fornita
+  email_cliente: z.string().email("Indirizzo email non valido.").min(1, "L'email del cliente è obbligatoria."), // Modificato: reso obbligatorio
   indirizzo_intervento: z.string().min(1, "Indirizzo dell'intervento è obbligatorio."),
   giorno_preferito: z.string().min(1, "Giorno preferito è obbligatorio."),
   fascia_oraria: z.string().min(1, "Fascia oraria preferita è obbligatoria."),
@@ -98,8 +98,8 @@ export default function NewRequestPage() {
       const docData = {
         ...data,
         id_azienda: companyId,
-        email_cliente: data.email_cliente || null, // Salva null se stringa vuota
-        stato: "in attesa", // Stato iniziale
+        // email_cliente sarà sempre presente perché obbligatorio
+        stato: "in attesa", 
         created_at: serverTimestamp(),
       };
 
@@ -109,8 +109,8 @@ export default function NewRequestPage() {
         title: "Richiesta Aggiunta!",
         description: "La nuova richiesta di intervento è stata salvata con successo.",
       });
-      form.reset(); // Resetta i campi del form
-      router.push("/dashboard/requests"); // Reindirizza alla lista delle richieste
+      form.reset(); 
+      router.push("/dashboard/requests"); 
     } catch (error) {
       console.error("Errore durante il salvataggio della richiesta: ", error);
       toast({
@@ -187,7 +187,7 @@ export default function NewRequestPage() {
                 name="email_cliente"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email Cliente (Opzionale)</FormLabel>
+                    <FormLabel>Email Cliente <span className="text-destructive">*</span></FormLabel> 
                     <FormControl>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -296,7 +296,7 @@ export default function NewRequestPage() {
                        <div className="relative">
                         <StickyNote className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                         <Textarea
-                          placeholder="Fornisci dettagli aggiuntivi utili per l'intervento..."
+                          placeholder="Fornisci dettagli aggiuntive utili per l'intervento..."
                           className="pl-10 resize-none min-h-[100px]"
                           {...field}
                         />
@@ -323,5 +323,3 @@ export default function NewRequestPage() {
     </div>
   );
 }
-
-    
