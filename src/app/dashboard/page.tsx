@@ -385,8 +385,12 @@ export default function DashboardPage() {
           <CardContent className="flex flex-col items-center justify-center h-48 text-muted-foreground">
             <Lightbulb className="h-12 w-12 mb-4 text-primary opacity-70" />
             <p className="mb-3 text-center">Richiedi un suggerimento al nostro assistente AI per ottimizzare l'assegnazione dei tecnici.</p>
-            <Button variant="outline" asChild className="text-accent border-accent hover:bg-accent/10">
-                <Link href="/dashboard/ai/suggestions">Richiedi Suggerimento AI</Link>
+            <Button 
+              variant="outline" 
+              className="text-accent border-accent hover:bg-accent/10"
+              onClick={() => { /* Potrebbe aprire una modale o eseguire un'azione specifica in futuro */ }}
+            >
+              Richiedi Suggerimento AI
             </Button>
           </CardContent>
         </Card>
