@@ -39,7 +39,8 @@ export default function AiSuggestionsPage() {
   const { toast } = useToast();
 
   const [pendingRequests, setPendingRequests] = useState<ClientRequest[]>([]);
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  // technicians state is not directly used in UI after techniciansWithLoad is calculated, can be removed if not needed elsewhere
+  // const [technicians, setTechnicians] = useState<Technician[]>([]); 
   const [techniciansWithLoad, setTechniciansWithLoad] = useState<AiTechnicianInput[]>([]);
   
   const [isLoadingPageData, setIsLoadingPageData] = useState(true);
@@ -71,7 +72,7 @@ export default function AiSuggestionsPage() {
         id: docSnap.id,
         ...docSnap.data(),
       } as Technician));
-      setTechnicians(fetchedTechnicians);
+      // setTechnicians(fetchedTechnicians); // Not strictly needed if only techniciansWithLoad is used
 
       // Calculate load for each technician
       const techsWithLoadPromises = fetchedTechnicians.map(async (tech) => {
@@ -111,7 +112,7 @@ export default function AiSuggestionsPage() {
         setCurrentUser(null);
         setCompanyId(null);
         setPendingRequests([]);
-        setTechnicians([]);
+        // setTechnicians([]);
         setTechniciansWithLoad([]);
         setIsLoadingPageData(false);
       }
@@ -163,16 +164,15 @@ export default function AiSuggestionsPage() {
         assegnato_a_tecnico_nome: technician.nome_completo,
       });
       toast({ title: "Tecnico Assegnato!", description: `${technician.nome_completo} è stato assegnato alla richiesta.` });
-      // Refresh data or remove request from list
+      
       setPendingRequests(prev => prev.filter(req => req.id !== requestId));
       setAiSuggestions(prev => {
         const newState = { ...prev };
         delete newState[requestId];
         return newState;
       });
-      // Optionally, re-fetch page data to update technician loads if critical
-      if (companyId) fetchPageData(companyId);
-
+      
+      if (companyId) fetchPageData(companyId); // Re-fetch to update technician loads and pending requests list
 
     } catch (error) {
       console.error("Error assigning technician:", error);
@@ -212,9 +212,11 @@ export default function AiSuggestionsPage() {
         </Card>
       )}
 
-      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 items-start"> {/* Added items-start */}
         {pendingRequests.map((req) => {
           const currentSuggestionState = aiSuggestions[req.id];
+          const hasExistingSuggestionOrError = !!currentSuggestionState?.suggestion || !!currentSuggestionState?.error;
+
           return (
             <Card key={req.id} className="shadow-lg flex flex-col">
               <CardHeader>
@@ -248,29 +250,33 @@ export default function AiSuggestionsPage() {
                 )}
                 {currentSuggestionState?.error && (
                   <Alert variant="destructive" className="mt-4">
-                    <Lightbulb className="h-4 w-4" />
+                    <Lightbulb className="h-4 w-4" /> {/* Consider using a different icon for errors, e.g., AlertTriangle */}
                     <AlertTitle>Errore Suggerimento</AlertTitle>
                     <AlertDescription className="text-xs">{currentSuggestionState.error}</AlertDescription>
                   </Alert>
                 )}
               </CardContent>
-              <div className="p-4 border-t mt-auto flex gap-2 justify-end">
+              <div className="p-4 border-t mt-auto flex flex-wrap gap-2 justify-end"> {/* Added flex-wrap */}
                 <Button
                   variant="outline"
                   onClick={() => handleGetAiSuggestion(req)}
                   disabled={currentSuggestionState?.isLoading || techniciansWithLoad.length === 0}
+                  size="sm" // Added size sm for better fit with flex-wrap
                 >
                   {currentSuggestionState?.isLoading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <Lightbulb className="mr-2 h-4 w-4" />
                   )}
-                  {currentSuggestionState?.isLoading ? "Attendere..." : "Ottieni Suggerimento"}
+                  {currentSuggestionState?.isLoading 
+                    ? "Attendere..." 
+                    : hasExistingSuggestionOrError ? "Ottieni Nuovo Suggerimento" : "Ottieni Suggerimento"}
                 </Button>
                 {currentSuggestionState?.suggestion?.suggestedTechnician && (
                   <Button
                     className="bg-accent hover:bg-accent/90 text-accent-foreground"
                     onClick={() => handleAssignTechnician(req.id, currentSuggestionState.suggestion!.suggestedTechnician!)}
+                    size="sm" // Added size sm
                   >
                     <UserCheck className="mr-2 h-4 w-4" />
                     Assegna a {currentSuggestionState.suggestion.suggestedTechnician.nome_completo.split(" ")[0]}
