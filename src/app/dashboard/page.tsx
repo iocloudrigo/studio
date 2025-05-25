@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils"; // Import cn utility
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -24,6 +25,10 @@ interface DashboardStats {
 export interface RecentRequest extends RequestSheetData {
   // RequestSheetData già include id_azienda, assegnato_a_tecnico_id, assegnato_a_tecnico_nome
 }
+
+const activeRequestStatusesForCount = ["in attesa", "assegnata", "programmata", "in corso"];
+const activeRequestStatusesForLink = encodeURIComponent(activeRequestStatusesForCount.join(','));
+
 
 export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
@@ -46,16 +51,116 @@ export default function DashboardPage() {
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestSheetData | null>(null);
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null); // Stato per la riga selezionata
+
+  const fetchDashboardData = useCallback(async (currentCompanyId: string) => {
+    // Fetch Active Requests
+    setLoadingStats(prev => ({ ...prev, activeRequests: true }));
+    try {
+      const activeRequestsQuery = query(
+        collection(db, "richieste_clienti"),
+        where("id_azienda", "==", currentCompanyId),
+        where("stato", "not-in", ["completata", "annullata"])
+      );
+      const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
+      setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
+    } catch (error) {
+      console.error("Error fetching active requests count:", error);
+      toast({ title: "Errore Conteggio Interventi Aperti", description: "Impossibile caricare il conteggio.", variant: "destructive" });
+      setStats(prev => ({ ...prev, activeRequests: 0 })); // Fallback a 0
+    } finally {
+      setLoadingStats(prev => ({ ...prev, activeRequests: false }));
+    }
+
+    // Fetch Assigned Requests
+    setLoadingStats(prev => ({ ...prev, assignedRequests: true }));
+    try {
+      const assignedRequestsQuery = query(
+        collection(db, "richieste_clienti"),
+        where("id_azienda", "==", currentCompanyId),
+        where("stato", "==", "assegnata")
+      );
+      const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
+      setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
+    } catch (error) {
+      console.error("Error fetching assigned requests stats:", error);
+      toast({ title: "Errore Conteggio Richieste Assegnate", description: "Impossibile caricare il conteggio.", variant: "destructive" });
+      setStats(prev => ({ ...prev, assignedRequests: 0 }));
+    } finally {
+      setLoadingStats(prev => ({ ...prev, assignedRequests: false }));
+    }
+
+    // Fetch In Progress Requests
+    setLoadingStats(prev => ({ ...prev, inProgressRequests: true }));
+    try {
+      const inProgressRequestsQuery = query(
+        collection(db, "richieste_clienti"),
+        where("id_azienda", "==", currentCompanyId),
+        where("stato", "==", "in corso")
+      );
+      const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
+      setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
+    } catch (error) {
+      console.error("Error fetching in-progress requests stats:", error);
+      toast({ title: "Errore Conteggio Tecnici al Lavoro", description: "Impossibile caricare il conteggio.", variant: "destructive" });
+      setStats(prev => ({ ...prev, inProgressRequests: 0 }));
+    } finally {
+      setLoadingStats(prev => ({ ...prev, inProgressRequests: false }));
+    }
+
+    // Fetch Recent Requests (Table)
+    setLoadingRequests(true);
+    try {
+      const requestsQuery = query(
+        collection(db, "richieste_clienti"),
+        where("id_azienda", "==", currentCompanyId),
+        where("stato", "not-in", ["completata", "annullata"]), // Esclude completate e annullate
+        orderBy("created_at", "desc"),
+        limit(10)
+      );
+      const requestsSnapshot = await getDocs(requestsQuery);
+      const fetchedRequests = requestsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          id_azienda: data.id_azienda,
+          customer: data.nome_cliente || "N/D",
+          service: data.tipo_servizio || "N/D",
+          status: data.stato || "N/D",
+          created_at: data.created_at as Timestamp | undefined,
+          note_aggiuntive: data.note_aggiuntive || "",
+          indirizzo_intervento: data.indirizzo_intervento || "",
+          telefono_cliente: data.telefono_cliente || "",
+          email_cliente: data.email_cliente || "",
+          giorno_preferito: data.giorno_preferito || "",
+          fascia_oraria: data.fascia_oraria || "",
+          completata_da_collaboratore_id: data.completata_da_collaboratore_id,
+          completata_da_collaboratore_nome: data.completata_da_collaboratore_nome,
+          data_completamento: data.data_completamento as Timestamp | undefined,
+          assegnato_a_tecnico_id: data.assegnato_a_tecnico_id,
+          assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome,
+        } as RecentRequest;
+      });
+      setRecentRequests(fetchedRequests);
+    } catch (error) {
+      console.error("Error fetching recent requests:", error);
+      toast({ title: "Errore Richieste Recenti", description: "Impossibile caricare le richieste recenti.", variant: "destructive" });
+      setRecentRequests([]);
+    } finally {
+      setLoadingRequests(false);
+    }
+  }, [toast]);
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
         setCompanyId(user.uid);
+        fetchDashboardData(user.uid);
       } else {
         setCurrentUser(null);
         setCompanyId(null);
-        // Reset stats and requests if user logs out
         setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 });
         setRecentRequests([]);
         setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false });
@@ -63,120 +168,8 @@ export default function DashboardPage() {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [fetchDashboardData]);
 
-  useEffect(() => {
-    if (!companyId) {
-      // Ensure loading states are false if no companyId
-      setLoadingStats({ activeRequests: false, assignedRequests: false, inProgressRequests: false });
-      setLoadingRequests(false);
-      setStats({ activeRequests: 0, assignedRequests: 0, inProgressRequests: 0 });
-      setRecentRequests([]);
-      return;
-    }
-
-    const fetchDashboardData = async () => {
-      // Fetch Active Requests
-      setLoadingStats(prev => ({ ...prev, activeRequests: true }));
-      try {
-        const activeRequestsQuery = query(
-          collection(db, "richieste_clienti"),
-          where("id_azienda", "==", companyId),
-          where("stato", "not-in", ["completata", "annullata"])
-        );
-        const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
-        setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
-      } catch (error) {
-        console.error("Error fetching active requests count:", error);
-        toast({ title: "Errore Conteggio Interventi Aperti", description: "Impossibile caricare il conteggio.", variant: "destructive" });
-        setStats(prev => ({ ...prev, activeRequests: 0 }));
-      } finally {
-        setLoadingStats(prev => ({ ...prev, activeRequests: false }));
-      }
-
-      // Fetch Assigned Requests
-      setLoadingStats(prev => ({ ...prev, assignedRequests: true }));
-      try {
-        const assignedRequestsQuery = query(
-          collection(db, "richieste_clienti"),
-          where("id_azienda", "==", companyId),
-          where("stato", "==", "assegnata")
-        );
-        const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
-        setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
-      } catch (error) {
-        console.error("Error fetching assigned requests stats:", error);
-        toast({ title: "Errore Conteggio Richieste Assegnate", description: "Impossibile caricare il conteggio.", variant: "destructive" });
-        setStats(prev => ({ ...prev, assignedRequests: 0 }));
-      } finally {
-        setLoadingStats(prev => ({ ...prev, assignedRequests: false }));
-      }
-
-      // Fetch In Progress Requests
-      setLoadingStats(prev => ({ ...prev, inProgressRequests: true }));
-      try {
-        const inProgressRequestsQuery = query(
-          collection(db, "richieste_clienti"),
-          where("id_azienda", "==", companyId),
-          where("stato", "==", "in corso")
-        );
-        const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
-        setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
-      } catch (error) {
-        console.error("Error fetching in-progress requests stats:", error);
-        toast({ title: "Errore Conteggio Tecnici al Lavoro", description: "Impossibile caricare il conteggio.", variant: "destructive" });
-        setStats(prev => ({ ...prev, inProgressRequests: 0 }));
-      } finally {
-        setLoadingStats(prev => ({ ...prev, inProgressRequests: false }));
-      }
-
-      // Fetch Recent Requests (Table) - Exclude "completata" and "annullata"
-      setLoadingRequests(true);
-      try {
-        const requestsQuery = query(
-          collection(db, "richieste_clienti"),
-          where("id_azienda", "==", companyId),
-          where("stato", "not-in", ["completata", "annullata"]),
-          orderBy("created_at", "desc"),
-          limit(10)
-        );
-        const requestsSnapshot = await getDocs(requestsQuery);
-        const fetchedRequests = requestsSnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            id_azienda: data.id_azienda,
-            customer: data.nome_cliente || "N/D",
-            service: data.tipo_servizio || "N/D",
-            status: data.stato || "N/D",
-            created_at: data.created_at as Timestamp | undefined,
-            note_aggiuntive: data.note_aggiuntive || "",
-            indirizzo_intervento: data.indirizzo_intervento || "",
-            telefono_cliente: data.telefono_cliente || "",
-            email_cliente: data.email_cliente || "",
-            giorno_preferito: data.giorno_preferito || "",
-            fascia_oraria: data.fascia_oraria || "",
-            completata_da_collaboratore_id: data.completata_da_collaboratore_id,
-            completata_da_collaboratore_nome: data.completata_da_collaboratore_nome,
-            data_completamento: data.data_completamento as Timestamp | undefined,
-            assegnato_a_tecnico_id: data.assegnato_a_tecnico_id,
-            assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome,
-          } as RecentRequest;
-        });
-        setRecentRequests(fetchedRequests);
-      } catch (error) {
-        console.error("Error fetching recent requests:", error);
-        toast({ title: "Errore Richieste Recenti", description: "Impossibile caricare le richieste recenti.", variant: "destructive" });
-        setRecentRequests([]);
-      } finally {
-        setLoadingRequests(false);
-      }
-    };
-
-    if (companyId) {
-      fetchDashboardData();
-    }
-  }, [companyId, toast]);
 
   const handleUpdateRequestStatus = async (requestId: string, newStatus: string, additionalData: Record<string, any> = {}) => {
     if (!companyId) {
@@ -188,7 +181,6 @@ export default function DashboardPage() {
       await updateDoc(requestDocRef, { stato: newStatus, ...additionalData });
       toast({ title: "Successo!", description: `Stato della richiesta aggiornato a "${newStatus}".` });
 
-      // Update recentRequests list: remove if new status is 'completata' or 'annullata', otherwise update
       if (newStatus === "completata" || newStatus === "annullata") {
         setRecentRequests(prevRequests => prevRequests.filter(req => req.id !== requestId));
       } else {
@@ -201,30 +193,44 @@ export default function DashboardPage() {
       
       // Refetch stats that might be affected
       if (companyId) {
-        setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true }));
-        Promise.all([
-          getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "not-in", ["completata", "annullata"]))),
-          getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "assegnata"))),
-          getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "in corso")))
-        ]).then(([activeSnap, assignedSnap, inProgressSnap]) => {
-          setStats(prev => ({
-            ...prev,
-            activeRequests: activeSnap.data().count,
-            assignedRequests: assignedSnap.data().count,
-            inProgressRequests: inProgressSnap.data().count,
-          }));
-        }).catch(error => {
-          console.error("Error refetching stats:", error);
-          toast({ title: "Errore Aggiornamento Statistiche", description: "Impossibile aggiornare i conteggi.", variant: "destructive" });
-        }).finally(() => {
-          setLoadingStats(prev => ({ ...prev, activeRequests: false, assignedRequests: false, inProgressRequests: false }));
-        });
+        // Refetch Active Requests Count
+        setLoadingStats(prev => ({ ...prev, activeRequests: true }));
+        getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "not-in", ["completata", "annullata"])))
+          .then(snap => setStats(prev => ({ ...prev, activeRequests: snap.data().count })))
+          .catch(err => { console.error("Error refetching active requests:", err); toast({ title: "Errore Aggiornamento Statistiche", description: "Impossibile aggiornare conteggio interventi aperti.", variant: "destructive" });})
+          .finally(() => setLoadingStats(prev => ({...prev, activeRequests: false })));
+
+        // Refetch Assigned Requests Count
+        setLoadingStats(prev => ({ ...prev, assignedRequests: true }));
+        getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "assegnata")))
+          .then(snap => setStats(prev => ({ ...prev, assignedRequests: snap.data().count })))
+          .catch(err => { console.error("Error refetching assigned requests:", err); toast({ title: "Errore Aggiornamento Statistiche", description: "Impossibile aggiornare conteggio richieste assegnate.", variant: "destructive" });})
+          .finally(() => setLoadingStats(prev => ({...prev, assignedRequests: false })));
+        
+        // Refetch In Progress Requests Count
+        setLoadingStats(prev => ({ ...prev, inProgressRequests: true }));
+        getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "in corso")))
+          .then(snap => setStats(prev => ({ ...prev, inProgressRequests: snap.data().count })))
+          .catch(err => { console.error("Error refetching in-progress requests:", err); toast({ title: "Errore Aggiornamento Statistiche", description: "Impossibile aggiornare conteggio tecnici al lavoro.", variant: "destructive" });})
+          .finally(() => setLoadingStats(prev => ({...prev, inProgressRequests: false })));
       }
 
     } catch (error) {
       console.error("Error updating request status:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare lo stato della richiesta.", variant: "destructive" });
       throw error;
+    }
+  };
+
+  const handleRowClick = (req: RecentRequest) => {
+    if (req.status === "in attesa") {
+      if (selectedRowId === req.id) {
+        setSelectedRowId(null); // Deseleziona se si clicca di nuovo la stessa riga
+      } else {
+        setSelectedRowId(req.id);
+      }
+    } else {
+      setSelectedRowId(null); // Deseleziona se si clicca una riga non "in attesa"
     }
   };
 
@@ -244,7 +250,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Link href={`/dashboard/requests?statusFilter=${encodeURIComponent("in attesa,assegnata,programmata,in corso")}`}>
+        <Link href={`/dashboard/requests?statusFilter=${activeRequestStatusesForLink}`}>
           <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Interventi Aperti</CardTitle>
@@ -276,7 +282,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </Link>
-        <Link href={`/dashboard/requests?statusFilter=${encodeURIComponent("in corso")}`}>
+        <Link href={`/dashboard/requests?statusFilter=in%20corso`}>
           <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Tecnici al lavoro</CardTitle>
@@ -288,7 +294,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="text-2xl font-bold">{stats.inProgressRequests ?? 0}</div>
               )}
-              <p className="text-xs text-muted-foreground">Tecnici attualmente operativi su un intervento.</p>
+              <p className="text-xs text-muted-foreground">Richieste attualmente in lavorazione.</p>
             </CardContent>
           </Card>
         </Link>
@@ -297,7 +303,7 @@ export default function DashboardPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Ultime Richieste</CardTitle> 
-          <CardDescription>Visualizza le richieste di intervento più recenti.</CardDescription>
+          <CardDescription>Visualizza le richieste di intervento più recenti che necessitano attenzione.</CardDescription>
         </CardHeader>
         <CardContent>
           {loadingRequests ? (
@@ -310,19 +316,27 @@ export default function DashboardPage() {
             <ScrollArea className="h-[380px] w-full">
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead>
+                  <thead className="sticky top-0 bg-card z-10">
                     <tr className="border-b">
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">ID</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Cliente</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Servizio</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Tecnico Assegnato</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th>
-                      <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground">ID</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Cliente</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Servizio</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Tecnico Assegnato</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Stato</th>
+                      <th className="p-3 text-right text-sm font-semibold text-muted-foreground">Azioni</th>
                     </tr>
                   </thead>
                   <tbody>
                     {recentRequests.map((req) => (
-                      <tr key={req.id} className="border-b hover:bg-muted/50">
+                      <tr 
+                        key={req.id} 
+                        className={cn(
+                          "border-b hover:bg-muted/50",
+                          req.status === "in attesa" && "cursor-pointer",
+                          selectedRowId === req.id && req.status === "in attesa" && "bg-accent/20" // Stile per riga selezionata
+                        )}
+                        onClick={() => handleRowClick(req)}
+                      >
                         <td className="p-3 text-sm font-medium text-primary">{req.id.substring(0, 6)}...</td>
                         <td className="p-3 text-sm">{req.customer}</td>
                         <td className="p-3 text-sm">{req.service}</td>
@@ -344,7 +358,8 @@ export default function DashboardPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation(); // Impedisce che il click sul pulsante attivi l'onClick della riga
                               setSelectedRequest(req);
                               setIsSheetOpen(true);
                             }}
@@ -361,7 +376,7 @@ export default function DashboardPage() {
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="mx-auto h-12 w-12 mb-2" />
-              <p>Nessuna richiesta recente trovata.</p>
+              <p>Nessuna richiesta recente attiva trovata.</p>
             </div>
           )}
         </CardContent>
@@ -384,13 +399,13 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center h-48 text-muted-foreground">
             <Lightbulb className="h-12 w-12 mb-4 text-primary opacity-70" />
-            <p className="mb-3 text-center">Richiedi un suggerimento al nostro assistente AI per ottimizzare l'assegnazione dei tecnici.</p>
+            <p className="mb-3 text-center">Ottimizza l'assegnazione dei tecnici con i suggerimenti dell'AI.</p>
             <Button 
               variant="outline" 
               className="text-accent border-accent hover:bg-accent/10"
-              onClick={() => { /* Potrebbe aprire una modale o eseguire un'azione specifica in futuro */ }}
+              asChild
             >
-              Richiedi Suggerimento AI
+              <Link href="/dashboard/ai/suggestions">Richiedi Suggerimento AI</Link>
             </Button>
           </CardContent>
         </Card>
@@ -406,6 +421,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-    
-
-    
