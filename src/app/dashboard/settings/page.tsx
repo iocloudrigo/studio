@@ -44,8 +44,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-// Rimosso import non più necessario: import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { useActiveCollaborator } from '@/app/dashboard/layout'; // Importa il custom hook
+import { useActiveCollaborator } from '@/app/dashboard/layout'; 
 
 const companyFormSchema = z.object({
   nome: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
@@ -127,9 +126,8 @@ export default function SettingsPage() {
   const [selectedCollaboratorForSheet, setSelectedCollaboratorForSheet] = useState<Collaborator | null>(null);
   const [isCollaboratorSheetOpen, setIsCollaboratorSheetOpen] = useState(false);
 
-  // Utilizza il context per activeCollaborator
   const { activeCollaborator, isLoadingActiveCollaborator } = useActiveCollaborator();
-  const activeCollaboratorRole = activeCollaborator?.ruolo || null;
+  const [activeCollaboratorRole, setActiveCollaboratorRole] = useState<string | null>(null);
   
   const companyForm = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
@@ -161,6 +159,14 @@ export default function SettingsPage() {
       ruolo: "",
     },
   });
+
+  useEffect(() => {
+    if (activeCollaborator) {
+      setActiveCollaboratorRole(activeCollaborator.ruolo);
+    } else {
+      setActiveCollaboratorRole(null);
+    }
+  }, [activeCollaborator]);
 
   const fetchCollaborators = useCallback(async (currentCompanyId: string) => {
     if (!currentCompanyId) return;
@@ -587,7 +593,7 @@ export default function SettingsPage() {
 
   const canEditAdminProfile = activeCollaboratorRole === "Amministratore";
 
-  if (loadingData || isLoadingActiveCollaborator) { // Considera anche isLoadingActiveCollaborator
+  if (loadingData || isLoadingActiveCollaborator) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -603,11 +609,11 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="company" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-6">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6"> {/* Modificato grid-cols-5 in grid-cols-4 */}
           <TabsTrigger value="company"><Building className="mr-2 h-4 w-4 hidden sm:inline-block"/>Azienda</TabsTrigger>
           <TabsTrigger value="profile"><UserCircle className="mr-2 h-4 w-4 hidden sm:inline-block"/>Profilo & Utenti</TabsTrigger>
           <TabsTrigger value="notifications" disabled><Bell className="mr-2 h-4 w-4 hidden sm:inline-block"/>Notifiche</TabsTrigger>
-          <TabsTrigger value="security" disabled><ShieldCheck className="mr-2 h-4 w-4 hidden sm:inline-block"/>Sicurezza</TabsTrigger>
+          {/* <TabsTrigger value="security" disabled><ShieldCheck className="mr-2 h-4 w-4 hidden sm:inline-block"/>Sicurezza</TabsTrigger> */} {/* Rimosso/Commentato */}
           <TabsTrigger value="billing" disabled><CreditCard className="mr-2 h-4 w-4 hidden sm:inline-block"/>Fatturazione</TabsTrigger>
         </TabsList>
 
@@ -979,7 +985,7 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
         
-        <TabsContent value="security">
+        <TabsContent value="security"> {/* Il contenuto rimane anche se la scheda è nascosta */}
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>Sicurezza Account</CardTitle>
