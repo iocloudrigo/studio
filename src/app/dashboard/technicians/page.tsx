@@ -69,8 +69,8 @@ export default function TechniciansPage() {
     try {
       const techniciansQuery = query(
         collection(db, "tecnici"),
-        where("id_azienda", "==", currentCompanyId),
-        orderBy("data_creazione", "desc")
+        where("id_azienda", "==", currentCompanyId)
+        // Rimuoviamo orderBy("data_creazione", "desc") perché ordineremo client-side
       );
       const querySnapshot = await getDocs(techniciansQuery);
       const fetchedTechniciansBase = querySnapshot.docs.map(docSnap => ({
@@ -78,7 +78,7 @@ export default function TechniciansPage() {
         ...docSnap.data(),
       } as Technician));
 
-      const techniciansWithActiveRequests = await Promise.all(
+      let techniciansWithActiveRequests = await Promise.all(
         fetchedTechniciansBase.map(async (tech) => {
           if (STATI_TECNICO_ATTIVI_PER_CONTEGGIO.includes(tech.stato)) {
             const requestsQuery = query(
@@ -100,6 +100,31 @@ export default function TechniciansPage() {
           return tech;
         })
       );
+
+      // Logica di ordinamento personalizzata
+      techniciansWithActiveRequests.sort((a, b) => {
+        const aIsInFerie = a.stato === "In Ferie";
+        const bIsInFerie = b.stato === "In Ferie";
+
+        if (aIsInFerie && !bIsInFerie) {
+          return 1; // a (In Ferie) va dopo b
+        }
+        if (!aIsInFerie && bIsInFerie) {
+          return -1; // a va prima di b (In Ferie)
+        }
+
+        // Se entrambi sono "In Ferie" o nessuno dei due lo è, ordina per richieste attive
+        const aRequests = a.richiesteAttive ?? 0;
+        const bRequests = b.richiesteAttive ?? 0;
+
+        if (bRequests !== aRequests) {
+          return bRequests - aRequests; // Decrescente per richieste attive
+        }
+
+        // Infine, ordina per nome completo (crescente)
+        return a.nome_completo.localeCompare(b.nome_completo);
+      });
+
       setTechnicians(techniciansWithActiveRequests);
 
     } catch (error) {
@@ -117,6 +142,7 @@ export default function TechniciansPage() {
   }, [companyId, fetchTechnicians]);
 
   const filteredTechnicians = useMemo(() => {
+    // Il filtraggio per searchTerm avviene sull'array già ordinato
     return technicians.filter(tech => {
       const searchTermLower = searchTerm.toLowerCase();
       return tech.nome_completo.toLowerCase().includes(searchTermLower) ||
@@ -146,7 +172,7 @@ export default function TechniciansPage() {
         telefono: data.telefono || null,
       });
       toast({ title: "Successo!", description: "Tecnico aggiornato con successo." });
-      if (companyId) fetchTechnicians(companyId); 
+      if (companyId) fetchTechnicians(companyId); // Ricarica per riflettere ordinamento e conteggi
     } catch (error) {
       console.error("Error updating technician:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare il tecnico.", variant: "destructive" });
@@ -159,7 +185,7 @@ export default function TechniciansPage() {
     try {
       await deleteDoc(doc(db, "tecnici", technicianId));
       toast({ title: "Successo!", description: "Tecnico eliminato con successo." });
-      if (companyId) fetchTechnicians(companyId);
+      if (companyId) fetchTechnicians(companyId); // Ricarica
     } catch (error) {
       console.error("Error deleting technician:", error);
       toast({ title: "Errore Eliminazione", description: "Impossibile eliminare il tecnico.", variant: "destructive" });
