@@ -27,7 +27,7 @@ import { onAuthStateChanged } from "firebase/auth";
 
 const NewClientFormSchema = z.object({
   nome_completo: z.string().min(1, "Nome e Cognome del cliente è obbligatorio."),
-  email: z.string().email("Indirizzo email non valido.").optional().or(z.literal("")),
+  email: z.string().email("Indirizzo email non valido.").min(1, "L'indirizzo email è obbligatorio."), // Modificato: reso obbligatorio
   telefono: z.string().optional(),
   indirizzo: z.string().optional(),
   note_interne: z.string().optional(),
@@ -60,7 +60,7 @@ export default function NewClientPage() {
     resolver: zodResolver(NewClientFormSchema),
     defaultValues: {
       nome_completo: "",
-      email: "",
+      email: "", // Rimane stringa vuota come default, ma la validazione lo renderà obbligatorio
       telefono: "",
       indirizzo: "",
       note_interne: "",
@@ -81,12 +81,12 @@ export default function NewClientPage() {
       const docData = {
         ...data,
         id_azienda: companyId,
-        email: data.email || null,
+        // email sarà sempre presente perché obbligatorio
         telefono: data.telefono || null,
         indirizzo: data.indirizzo || null,
         note_interne: data.note_interne || null,
         data_creazione: serverTimestamp(),
-        creato_automaticamente: false, // NUOVO CAMPO
+        creato_automaticamente: false,
       };
 
       await addDoc(collection(db, "clienti"), docData);
@@ -155,7 +155,7 @@ export default function NewClientPage() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email (Opzionale)</FormLabel>
+                      <FormLabel>Email <span className="text-destructive">*</span></FormLabel> {/* Modificato: rimosso (Opzionale) e aggiunto asterisco */}
                       <FormControl>
                         <div className="relative">
                           <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
