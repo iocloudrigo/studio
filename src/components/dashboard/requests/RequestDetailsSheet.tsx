@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { Loader2, UserCog } from "lucide-react";
 import { useActiveCollaborator } from '@/app/dashboard/layout';
 import type { User as FirebaseUser } from "firebase/auth"; // Import FirebaseUser
+import { useToast } from "@/hooks/use-toast"; // Import useToast
 
 // Interfaccia per i dati della richiesta nel pannello
 export interface RequestSheetData {
@@ -31,16 +32,16 @@ export interface RequestSheetData {
   completata_da_collaboratore_id?: string;
   completata_da_collaboratore_nome?: string;
   data_completamento?: Timestamp | Date;
-  id_azienda: string; // Aggiunto id_azienda, essenziale
+  id_azienda: string; 
   assegnato_a_tecnico_id?: string | null;
   assegnato_a_tecnico_nome?: string | null;
 }
 
-// Interfaccia per i tecnici (semplificata, adatta se non hai già un tipo globale)
+// Interfaccia per i tecnici
 interface Technician {
   id: string;
   nome_completo: string;
-  stato: string; // Aggiunto per filtrare i tecnici disponibili
+  stato: string;
 }
 
 interface RequestDetailsSheetProps {
@@ -63,6 +64,7 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
   const [selectedStatus, setSelectedStatus] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const { activeCollaborator } = useActiveCollaborator();
+  const { toast } = useToast(); // Inizializza useToast
 
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [isLoadingTechnicians, setIsLoadingTechnicians] = useState(false);
@@ -77,12 +79,11 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
   }, []);
 
   useEffect(() => {
-    if (request?.status) {
+    if (request) {
       setSelectedStatus(request.status);
-    }
-    if (request?.assegnato_a_tecnico_id) {
-      setSelectedTechnicianId(request.assegnato_a_tecnico_id);
+      setSelectedTechnicianId(request.assegnato_a_tecnico_id || null);
     } else {
+      setSelectedStatus("");
       setSelectedTechnicianId(null);
     }
   }, [request]);
@@ -95,7 +96,7 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
           const techsQuery = query(
             collection(db, "tecnici"),
             where("id_azienda", "==", request.id_azienda),
-            where("stato", "in", ["Disponibile", "Occupato"]) // Filtra solo tecnici attivi
+            where("stato", "in", ["Disponibile", "Occupato"]) 
           );
           const querySnapshot = await getDocs(techsQuery);
           const fetchedTechnicians = querySnapshot.docs.map(doc => ({
@@ -107,50 +108,58 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
         } catch (error) {
           console.error("Error fetching technicians:", error);
           setTechnicians([]);
+          toast({ title: "Errore Caricamento Tecnici", description: "Impossibile caricare l'elenco dei tecnici.", variant: "destructive" });
         } finally {
           setIsLoadingTechnicians(false);
         }
       };
       fetchTechs();
     }
-  }, [isOpen, currentUser, request?.id_azienda]);
+  }, [isOpen, currentUser, request?.id_azienda, toast]);
 
 
   if (!request) return null;
 
   const handleSave = async () => {
-    if (!selectedStatus && !selectedTechnicianId && selectedTechnicianId === request.assegnato_a_tecnico_id) {
-        // Non fare nulla se solo lo stato non è cambiato e il tecnico è lo stesso o non selezionato
-        if (selectedStatus === request.status) return; 
-    }
-    setIsSaving(true);
-    let additionalData: Record<string, any> = {};
+    const currentTechnicianId = selectedTechnicianId || request.assegnato_a_tecnico_id || null;
     let finalStatus = selectedStatus || request.status;
 
-    // Gestione assegnazione tecnico
-    if (selectedTechnicianId !== request.assegnato_a_tecnico_id) {
+    // Controllo per lo stato "completata"
+    if (finalStatus === "completata" && !currentTechnicianId) {
+      toast({
+        title: "Assegnazione Tecnico Mancante",
+        description: "Per completare la richiesta, è necessario prima assegnare un tecnico.",
+        variant: "destructive",
+      });
+      setIsSaving(false); // Resetta lo stato di salvataggio se c'è un errore
+      return; // Interrompi il salvataggio
+    }
+
+    if (!selectedStatus && selectedTechnicianId === (request.assegnato_a_tecnico_id || null)) {
+        if (finalStatus === request.status) return; 
+    }
+    
+    setIsSaving(true);
+    let additionalData: Record<string, any> = {};
+    
+    if (selectedTechnicianId !== (request.assegnato_a_tecnico_id || null)) {
       additionalData.assegnato_a_tecnico_id = selectedTechnicianId;
       const selectedTech = technicians.find(t => t.id === selectedTechnicianId);
       additionalData.assegnato_a_tecnico_nome = selectedTech ? selectedTech.nome_completo : null;
       
-      // Se si assegna un tecnico a una richiesta "in attesa", cambiala in "assegnata"
       if (selectedTechnicianId && finalStatus === "in attesa") {
         finalStatus = "assegnata";
-        setSelectedStatus("assegnata"); // Aggiorna lo stato nel UI
+        setSelectedStatus("assegnata"); 
       }
-      // Se si rimuove un tecnico da una richiesta "assegnata", cambiala in "in attesa"
       else if (!selectedTechnicianId && finalStatus === "assegnata") {
         finalStatus = "in attesa";
         setSelectedStatus("in attesa");
       }
     } else {
-        // Mantiene i valori esistenti se il tecnico selezionato non è cambiato
         additionalData.assegnato_a_tecnico_id = request.assegnato_a_tecnico_id;
         additionalData.assegnato_a_tecnico_nome = request.assegnato_a_tecnico_nome;
     }
 
-
-    // Gestione stato "completata"
     if (finalStatus === "completata" && request.status !== "completata") {
       if (activeCollaborator) {
         additionalData.completata_da_collaboratore_id = activeCollaborator.id;
@@ -168,6 +177,7 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
       onOpenChange(false);
     } catch (error) {
       console.error("Error updating status from sheet:", error);
+      // Il toast di errore dovrebbe essere gestito dalla funzione onUpdateRequestStatus della pagina genitore
     } finally {
       setIsSaving(false);
     }
@@ -287,7 +297,7 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
             disabled={
                 isSaving || 
                 ( (selectedStatus === request.status) && 
-                  (selectedTechnicianId === (request.assegnato_a_tecnico_id || null)) 
+                  ( (selectedTechnicianId || null) === (request.assegnato_a_tecnico_id || null)) 
                 )
             }
           >
@@ -299,5 +309,3 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
     </Sheet>
   );
 }
-
-    
