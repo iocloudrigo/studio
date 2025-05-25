@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview An AI agent to suggest the most suitable technician for a client request.
@@ -56,39 +55,41 @@ const prompt = ai.definePrompt({
   name: 'suggestTechnicianPrompt',
   input: {schema: SuggestTechnicianInputSchema},
   output: {schema: SuggestTechnicianOutputSchema},
-  prompt: `You are an expert dispatcher for a technical services company. Your task is to suggest the most suitable technician for a given client request.
+  prompt: `Sei un esperto dispatcher per un'azienda di servizi tecnici. Il tuo compito è suggerire il tecnico più adatto per una determinata richiesta del cliente.
 
-  Analyze the request details and the list of available technicians. Consider the following factors in order of importance:
-  1.  **Technician Status**:
-      *   Prefer technicians who are "Disponibile".
-      *   Consider "Occupato" technicians if their skills are a strong match and their current load is not excessive.
-      *   Avoid suggesting technicians who are "In Ferie" or "Non Disponibile" unless explicitly stated it's an extreme emergency and no other option exists.
-  2.  **Skill Match**:
-      *   Examine the 'requestDescription' for keywords related to the type of service needed.
-      *   Match these keywords against the 'competenze' of each technician. A strong skill match is highly desirable.
-  3.  **Current Load**:
-      *   Prefer technicians with a lower 'currentLoad' (fewer active requests).
-  4.  **Client Preferences**:
-      *   Acknowledge the 'clientPreferredDay' and 'clientPreferredTimeSlot' if provided.
-      *   In 'suggestedTimeNotes', indicate how the suggested technician's availability aligns with these preferences. For example, if the best technician is "Disponibile", note that client preferences can be considered. If "Occupato", note that scheduling might need flexibility.
+  Analizza i dettagli della richiesta e l'elenco dei tecnici disponibili. Considera i seguenti fattori in ordine di importanza:
+  1.  **Stato del Tecnico**:
+      *   Preferisci i tecnici che sono "Disponibile".
+      *   Considera i tecnici "Occupato" se le loro competenze sono una forte corrispondenza e il loro carico attuale non è eccessivo.
+      *   Evita di suggerire tecnici "In Ferie" o "Non Disponibile" a meno che non sia esplicitamente indicato che si tratta di un'emergenza estrema e non esista altra opzione.
+  2.  **Corrispondenza delle Competenze**:
+      *   Esamina la 'requestDescription' per parole chiave relative al tipo di servizio necessario.
+      *   Confronta queste parole chiave con le 'competenze' di ciascun tecnico. Una forte corrispondenza di competenze è altamente desiderabile.
+  3.  **Carico Attuale**:
+      *   Preferisci i tecnici con un 'currentLoad' inferiore (meno richieste attive).
+  4.  **Preferenze del Cliente**:
+      *   Prendi atto del 'clientPreferredDay' e 'clientPreferredTimeSlot' se forniti.
+      *   Nelle 'suggestedTimeNotes', indica come la disponibilità del tecnico suggerito si allinea a queste preferenze. Ad esempio, se il miglior tecnico è "Disponibile", nota che le preferenze del cliente possono essere considerate. Se "Occupato", nota che la programmazione potrebbe richiedere flessibilità.
 
-  Client Request Details:
+  Dettagli Richiesta Cliente:
   - ID: {{{requestId}}}
-  - Description: {{{requestDescription}}}
-  - Preferred Day: {{{clientPreferredDay}}}
-  - Preferred Time Slot: {{{clientPreferredTimeSlot}}}
+  - Descrizione: {{{requestDescription}}}
+  - Giorno Preferito: {{{clientPreferredDay}}}
+  - Fascia Oraria Preferita: {{{clientPreferredTimeSlot}}}
 
-  Available Technicians:
+  Tecnici Disponibili:
   {{#each technicianList}}
-  - ID: {{{id}}}, Name: {{{nome_completo}}}, Skills: {{#each competenze}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}, Status: {{{stato}}}, Current Load: {{{currentLoad}}}
+  - ID: {{{id}}}, Nome: {{{nome_completo}}}, Competenze: {{#each competenze}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}, Stato: {{{stato}}}, Carico Attuale: {{{currentLoad}}}
   {{/each}}
 
-  Output Format:
-  Return your suggestion in the specified JSON format.
-  - If a suitable technician is found, provide their 'id' and 'nome_completo'.
-  - Provide a clear 'reasoning' for your choice, explaining how you weighed the factors.
-  - Provide 'suggestedTimeNotes' regarding scheduling.
-  - If no suitable technician is found, 'suggestedTechnician' should be null, and 'reasoning' should explain why (e.g., no skill match, all suitable technicians unavailable).
+  **Importante: Fornisci la tua risposta (motivazione e note sulla programmazione) completamente in italiano.**
+
+  Formato di Output:
+  Restituisci il tuo suggerimento nel formato JSON specificato.
+  - Se viene trovato un tecnico adatto, fornisci il suo 'id' e 'nome_completo'.
+  - Fornisci una chiara 'reasoning' (motivazione) per la tua scelta, spiegando come hai ponderato i fattori.
+  - Fornisci 'suggestedTimeNotes' (note sulla programmazione) relative alla pianificazione.
+  - Se non viene trovato alcun tecnico adatto, 'suggestedTechnician' dovrebbe essere null, e 'reasoning' dovrebbe spiegare il perché (ad es., nessuna corrispondenza di competenze, tutti i tecnici adatti non disponibili).
   `,
 });
 
@@ -103,3 +104,4 @@ const suggestTechnicianFlow = ai.defineFlow(
     return output!;
   }
 );
+
