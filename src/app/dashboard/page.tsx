@@ -136,7 +136,7 @@ export default function DashboardPage() {
         const requestsQuery = query(
           collection(db, "richieste_clienti"),
           where("id_azienda", "==", companyId),
-          where("stato", "not-in", ["completata", "annullata"]), // Exclude completed and cancelled
+          where("stato", "not-in", ["completata", "annullata"]),
           orderBy("created_at", "desc"),
           limit(10)
         );
@@ -173,7 +173,9 @@ export default function DashboardPage() {
       }
     };
 
-    fetchDashboardData();
+    if (companyId) {
+      fetchDashboardData();
+    }
   }, [companyId, toast]);
 
   const handleUpdateRequestStatus = async (requestId: string, newStatus: string, additionalData: Record<string, any> = {}) => {
@@ -199,51 +201,30 @@ export default function DashboardPage() {
       
       // Refetch stats that might be affected
       if (companyId) {
-        // Refetch active requests count
-        setLoadingStats(prev => ({ ...prev, activeRequests: true }));
-        try {
-          const activeRequestsQuery = query(
-            collection(db, "richieste_clienti"),
-            where("id_azienda", "==", companyId),
-            where("stato", "not-in", ["completata", "annullata"])
-          );
-          const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
-          setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
-        } catch (error) { console.error("Error refetching active requests stats:", error); }
-        finally { setLoadingStats(prev => ({ ...prev, activeRequests: false }));}
-
-        // Refetch assigned requests count
-        setLoadingStats(prev => ({ ...prev, assignedRequests: true }));
-        try {
-            const assignedRequestsQuery = query(
-              collection(db, "richieste_clienti"),
-              where("id_azienda", "==", companyId),
-              where("stato", "==", "assegnata")
-            );
-            const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
-            setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
-        } catch (error) { console.error("Error refetching assigned requests stats:", error); }
-        finally { setLoadingStats(prev => ({...prev, assignedRequests: false})); }
-
-
-        // Refetch in-progress requests count
-        setLoadingStats(prev => ({ ...prev, inProgressRequests: true }));
-        try {
-            const inProgressRequestsQuery = query(
-              collection(db, "richieste_clienti"),
-              where("id_azienda", "==", companyId),
-              where("stato", "==", "in corso")
-            );
-            const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
-            setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
-        } catch (error) { console.error("Error refetching in-progress requests stats:", error); }
-        finally { setLoadingStats(prev => ({ ...prev, inProgressRequests: false}));}
+        setLoadingStats(prev => ({ ...prev, activeRequests: true, assignedRequests: true, inProgressRequests: true }));
+        Promise.all([
+          getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "not-in", ["completata", "annullata"]))),
+          getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "assegnata"))),
+          getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "in corso")))
+        ]).then(([activeSnap, assignedSnap, inProgressSnap]) => {
+          setStats(prev => ({
+            ...prev,
+            activeRequests: activeSnap.data().count,
+            assignedRequests: assignedSnap.data().count,
+            inProgressRequests: inProgressSnap.data().count,
+          }));
+        }).catch(error => {
+          console.error("Error refetching stats:", error);
+          toast({ title: "Errore Aggiornamento Statistiche", description: "Impossibile aggiornare i conteggi.", variant: "destructive" });
+        }).finally(() => {
+          setLoadingStats(prev => ({ ...prev, activeRequests: false, assignedRequests: false, inProgressRequests: false }));
+        });
       }
 
     } catch (error) {
       console.error("Error updating request status:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare lo stato della richiesta.", variant: "destructive" });
-      throw error; // Re-throw per gestione superiore se necessario
+      throw error;
     }
   };
 
@@ -275,7 +256,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="text-2xl font-bold">{stats.activeRequests ?? 0}</div>
               )}
-              <p className="text-xs text-muted-foreground">Richieste non completate o annullate</p>
+              <p className="text-xs text-muted-foreground">Richieste non "completata" o "annullata"</p>
             </CardContent>
           </Card>
         </Link>
@@ -334,6 +315,7 @@ export default function DashboardPage() {
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">ID</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Cliente</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Servizio</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Tecnico Assegnato</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th>
                       <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
                     </tr>
@@ -344,6 +326,7 @@ export default function DashboardPage() {
                         <td className="p-3 text-sm font-medium text-primary">{req.id.substring(0, 6)}...</td>
                         <td className="p-3 text-sm">{req.customer}</td>
                         <td className="p-3 text-sm">{req.service}</td>
+                        <td className="p-3 text-sm">{req.assegnato_a_tecnico_nome || ""}</td>
                         <td className="p-3 text-sm">
                           <span className={`px-2 py-1 text-xs rounded-full capitalize ${
                             req.status === "completata" ? "bg-green-100 text-green-700" :

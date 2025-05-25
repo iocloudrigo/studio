@@ -68,7 +68,7 @@ export default function AppointmentsPage() {
           const data = docSnap.data();
           return {
             id: docSnap.id,
-            id_azienda: data.id_azienda, // Assicurati che sia qui
+            id_azienda: data.id_azienda, 
             customer: data.nome_cliente || "N/D",
             service: data.tipo_servizio || "N/D",
             status: data.stato || "N/D",
@@ -82,8 +82,8 @@ export default function AppointmentsPage() {
             completata_da_collaboratore_id: data.completata_da_collaboratore_id,
             completata_da_collaboratore_nome: data.completata_da_collaboratore_nome,
             data_completamento: data.data_completamento as Timestamp | undefined,
-            assegnato_a_tecnico_id: data.assegnato_a_tecnico_id, // Aggiunto
-            assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome, // Aggiunto
+            assegnato_a_tecnico_id: data.assegnato_a_tecnico_id, 
+            assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome, 
           } as ScheduledAppointment;
         });
         setScheduledAppointments(fetchedAppointments);
@@ -95,7 +95,9 @@ export default function AppointmentsPage() {
       }
     };
 
-    fetchScheduledAppointments();
+    if (companyId) {
+        fetchScheduledAppointments();
+    }
   }, [companyId, toast]);
 
   const filteredAppointments = useMemo(() => {
@@ -183,6 +185,7 @@ export default function AppointmentsPage() {
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">ID Richiesta</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Cliente</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Servizio</th>
+                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Tecnico Assegnato</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Data Creazione</th>
                       <th className="p-3 text-left text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Stato</th>
                       <th className="p-3 text-right text-sm font-semibold text-muted-foreground sticky top-0 bg-card z-10">Azioni</th>
@@ -194,6 +197,7 @@ export default function AppointmentsPage() {
                         <td className="p-3 text-sm font-medium text-primary whitespace-nowrap">{app.id.substring(0, 8)}...</td>
                         <td className="p-3 text-sm whitespace-nowrap">{app.customer}</td>
                         <td className="p-3 text-sm">{app.service}</td>
+                        <td className="p-3 text-sm whitespace-nowrap">{app.assegnato_a_tecnico_nome || ""}</td>
                         <td className="p-3 text-sm whitespace-nowrap">{formatDate(app.created_at)}</td>
                         <td className="p-3 text-sm whitespace-nowrap">
                           <Badge 

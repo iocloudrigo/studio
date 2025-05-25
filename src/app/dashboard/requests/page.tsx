@@ -141,7 +141,9 @@ export default function AllRequestsPage() {
       }
     };
 
-    fetchRequests();
+    if (companyId) {
+        fetchRequests();
+    }
   }, [companyId, toast]);
 
   const handleStatusFilterToggle = (status: string) => {
@@ -296,7 +298,7 @@ export default function AllRequestsPage() {
                         <td className="p-3 text-sm font-medium text-primary whitespace-nowrap">{req.id.substring(0, 8)}...</td>
                         <td className="p-3 text-sm whitespace-nowrap">{req.customer}</td>
                         <td className="p-3 text-sm">{req.service}</td>
-                        <td className="p-3 text-sm whitespace-nowrap">{req.assegnato_a_tecnico_nome || "N/D"}</td>
+                        <td className="p-3 text-sm whitespace-nowrap">{req.assegnato_a_tecnico_nome || ""}</td>
                         <td className="p-3 text-sm whitespace-nowrap">
                           <Badge variant={
                               req.status === "completata" ? "default" :
@@ -352,6 +354,7 @@ export default function AllRequestsPage() {
 }
 
 // Dummy technicians data for displaying technician name in filter header, replace with actual fetch if needed
-const technicians = [
+const technicians: { id: string, nome_completo: string }[] = [
   // Example: { id: "techId1", nome_completo: "Mario Rossi" }
 ];
+
