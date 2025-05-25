@@ -50,14 +50,20 @@ const unifiedRegisterFormSchema = z.object({
   activitySector: z.string().optional(),
   companyCity: z.string().optional(),
 }).refine(data => {
-  if (!data.password && !data.confirmPassword) return true; 
-  if (data.password && (!data.confirmPassword || data.password.length < 6)) {
-    return false;
+  // Password checks are only relevant if there's no prefilledUser (i.e., new email/password registration)
+  // If prefilledUser exists, password fields are not shown and not required.
+  if (!auth.currentUser) { // A more direct check if we are in a new user registration scenario
+    if (!data.password || data.password.length < 6) {
+      return false; // Password is required and must be at least 6 chars for new users
+    }
+    if (data.password !== data.confirmPassword) {
+      return false; // Passwords must match for new users
+    }
   }
-  return data.password === data.confirmPassword;
+  return true;
 }, {
   message: "Le password non coincidono o la nuova password è troppo corta (min. 6 caratteri).",
-  path: ["confirmPassword"],
+  path: ["confirmPassword"], // This path might need adjustment if password field is optional
 });
 
 
@@ -133,7 +139,6 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
     let userEmailToUse: string | undefined = prefilledUser?.email || undefined;
     let userDisplayNameToUse: string | undefined = prefilledUser?.displayName || data.adminName;
 
-    // Se non c'è un utente pre-autenticato, creane uno nuovo
     if (!prefilledUser) {
       console.log("[UnifiedRegisterForm] Attempting new user registration with email:", data.email);
       if (!data.password || data.password.length < 6) {
@@ -150,10 +155,10 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
         const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password!);
         userIdToUse = userCredential.user.uid;
         userEmailToUse = userCredential.user.email!;
-        userDisplayNameToUse = data.adminName;
+        userDisplayNameToUse = data.adminName; // Ensure this is used
 
         await updateProfile(userCredential.user, { displayName: userDisplayNameToUse });
-        console.log("[UnifiedRegisterForm] New user created successfully with Firebase Auth:", userIdToUse);
+        console.log("[UnifiedRegisterForm] New user created successfully with Firebase Auth:", userIdToUse, "DisplayName set to:", userDisplayNameToUse);
       } catch (authError: any) {
         console.error("[UnifiedRegisterForm] Errore creazione utente Firebase Auth:", authError);
         let errorMessage = "Errore durante la creazione dell'utente. Riprova.";
@@ -236,7 +241,7 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
         telefono_contatto: data.companyPhone || null,
         settore_attivita: data.activitySector === "unspecified" || !data.activitySector ? null : data.activitySector,
         sede_citta: data.companyCity || null,
-        contatore_richieste: 0, 
+        // contatore_richieste: 0, // Rimosso in una precedente richiesta
         data_creazione: serverTimestamp(),
       };
 
@@ -247,13 +252,13 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
       
       const adminCollaboratorData = {
         id_azienda: userIdToUse,
-        nome_completo: userDisplayNameToUse || "Amministratore", 
+        nome_completo: data.adminName, // Uso diretto di data.adminName
         email: userEmailToUse,
         ruolo: "Amministratore",
         data_creazione: serverTimestamp(),
       };
       await addDoc(collection(db, "collaboratori_azienda"), adminCollaboratorData);
-      console.log("[UnifiedRegisterForm] Admin collaborator entry created for:", userEmailToUse);
+      console.log("[UnifiedRegisterForm] Admin collaborator entry created for:", userEmailToUse, "with name:", data.adminName);
 
       toast({
         title: "Registrazione Completata!",
@@ -528,3 +533,4 @@ export function UnifiedRegisterForm({ prefilledUser }: { prefilledUser?: Firebas
     </Card>
   );
 }
+
