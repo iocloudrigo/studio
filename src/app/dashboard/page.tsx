@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react"; // Aggiunto useRef
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils"; 
+import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation"; // Import useRouter
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -32,6 +33,7 @@ export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const { toast } = useToast();
+  const router = useRouter(); // Initialize router
 
   const [stats, setStats] = useState<DashboardStats>({
     activeRequests: 0,
@@ -52,7 +54,7 @@ export default function DashboardPage() {
   
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [selectedRequestDetailsForAI, setSelectedRequestDetailsForAI] = useState<RecentRequest | null>(null);
-  const tableContainerRef = useRef<HTMLDivElement>(null); // Riferimento per la tabella
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   const fetchDashboardData = useCallback(async (currentCompanyId: string) => {
     // Fetch Active Requests ("Interventi Aperti")
@@ -200,21 +202,18 @@ export default function DashboardPage() {
       }
       
       if (companyId) {
-        // Recalculate active requests
         setLoadingStats(prev => ({ ...prev, activeRequests: true }));
         getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "not-in", ["completata", "annullata"])))
           .then(snap => setStats(prev => ({ ...prev, activeRequests: snap.data().count })))
           .catch(err => { console.error("Error refetching active requests:", err); toast({ title: "Errore Aggiornamento Statistiche", description: "Impossibile aggiornare conteggio interventi aperti.", variant: "destructive" });})
           .finally(() => setLoadingStats(prev => ({...prev, activeRequests: false })));
 
-        // Recalculate assigned requests
         setLoadingStats(prev => ({ ...prev, assignedRequests: true }));
         getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "assegnata")))
           .then(snap => setStats(prev => ({ ...prev, assignedRequests: snap.data().count })))
           .catch(err => { console.error("Error refetching assigned requests:", err); toast({ title: "Errore Aggiornamento Statistiche", description: "Impossibile aggiornare conteggio richieste assegnate.", variant: "destructive" });})
           .finally(() => setLoadingStats(prev => ({...prev, assignedRequests: false })));
         
-        // Recalculate in-progress requests
         setLoadingStats(prev => ({ ...prev, inProgressRequests: true }));
         getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "in corso")))
           .then(snap => setStats(prev => ({ ...prev, inProgressRequests: snap.data().count })))
@@ -245,7 +244,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Effect per gestire il click fuori dalla tabella
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (tableContainerRef.current && !tableContainerRef.current.contains(event.target as Node) && selectedRowId) {
@@ -257,7 +255,7 @@ export default function DashboardPage() {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [selectedRowId]); // Aggiunto selectedRowId come dipendenza per ri-agganciare l'event listener se necessario
+  }, [selectedRowId]);
 
 
   return (
@@ -338,7 +336,7 @@ export default function DashboardPage() {
               <Skeleton className="h-8 w-full" />
             </div>
           ) : recentRequests.length > 0 ? (
-            <div ref={tableContainerRef}> {/* Wrapper per la tabella */}
+            <div ref={tableContainerRef}>
               <ScrollArea className="h-[380px] w-full">
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -385,7 +383,7 @@ export default function DashboardPage() {
                               variant="outline"
                               size="sm"
                               onClick={(e) => {
-                                e.stopPropagation(); // Impedisce al click sulla riga di attivarsi
+                                e.stopPropagation(); 
                                 setSelectedRequestForSheet(req);
                                 setIsSheetOpen(true);
                               }}
@@ -432,7 +430,7 @@ export default function DashboardPage() {
                  <Button 
                     variant="outline" 
                     className="text-accent border-accent hover:bg-accent/10"
-                    onClick={() => router.push("/dashboard/ai/suggestions")} // Modificato per navigare alla pagina corretta
+                    onClick={() => router.push("/dashboard/ai/suggestions")} 
                   >
                     Vai a Suggerimenti AI 
                   </Button>
@@ -448,7 +446,7 @@ export default function DashboardPage() {
                 <Button 
                   variant="outline" 
                   className="text-accent border-accent hover:bg-accent/10 w-full mt-3"
-                  onClick={() => router.push("/dashboard/ai/suggestions")} // Modificato per navigare alla pagina corretta
+                  onClick={() => router.push("/dashboard/ai/suggestions")}
                 >
                   Ottieni Suggerimento AI
                 </Button>
