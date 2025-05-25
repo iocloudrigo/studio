@@ -73,7 +73,7 @@ const navItems = [
     subItems: [
       { href: "/dashboard/requests", label: "Tutte le Richieste", icon: FileText },
       { href: "/dashboard/requests/new", label: "Nuova Richiesta", icon: MessageSquarePlus },
-      { href: "/dashboard/requests/suggestions", label: "Assegnazione AI", icon: Lightbulb }, // MODIFICATO QUI
+      { href: "/dashboard/ai/suggestions", label: "Assegnazione AI", icon: Lightbulb },
       { href: "/dashboard/requests?statusFilter=completata,annullata", label: "Archiviate", icon: Archive },
     ]
   },
@@ -111,7 +111,7 @@ export function AppSidebar() {
         setCurrentUser(null);
         setCompanyId(null);
         setCollaborators([]);
-        if (setActiveCollaborator) { // Check if setActiveCollaborator exists before calling
+        if (setActiveCollaborator) { 
           setActiveCollaborator(null);
         }
       }
@@ -120,7 +120,7 @@ export function AppSidebar() {
   }, [setActiveCollaborator]);
 
   const setDefaultActiveCollaboratorInContext = useCallback((collaboratorList: Collaborator[], user: FirebaseUser | null) => {
-    if (user && collaboratorList.length > 0 && setActiveCollaborator) { // Check setActiveCollaborator
+    if (user && collaboratorList.length > 0 && setActiveCollaborator) { 
       const adminCollaborator = collaboratorList.find(c => c.email === user.email && c.ruolo === "Amministratore");
       let defaultActive: ActiveCollaboratorStorageData | null = null;
       if (adminCollaborator) {
@@ -138,7 +138,7 @@ export function AppSidebar() {
         };
       }
       setActiveCollaborator(defaultActive);
-    } else if (setActiveCollaborator) { // Check setActiveCollaborator
+    } else if (setActiveCollaborator) { 
       setActiveCollaborator(null);
     }
   }, [setActiveCollaborator]);
@@ -159,7 +159,7 @@ export function AppSidebar() {
       } as Collaborator));
       setCollaborators(fetchedCollaborators);
 
-      if (!isLoadingActiveCollaborator && setActiveCollaborator) { // Check setActiveCollaborator
+      if (!isLoadingActiveCollaborator && setActiveCollaborator) { 
         const currentActive = activeCollaborator;
         if (!currentActive || !fetchedCollaborators.some(c => c.id === currentActive.id)) {
           setDefaultActiveCollaboratorInContext(fetchedCollaborators, auth.currentUser);
@@ -205,7 +205,7 @@ export function AppSidebar() {
         title: "Logout Effettuato",
         description: "Sei stato disconnesso con successo.",
       });
-      if (setActiveCollaborator) { // Check setActiveCollaborator
+      if (setActiveCollaborator) { 
         setActiveCollaborator(null);
       }
       router.push("/");
@@ -220,7 +220,7 @@ export function AppSidebar() {
   };
 
   const handleActiveCollaboratorChange = (collaboratorId: string) => {
-    if (!setActiveCollaborator) return; // Check if setActiveCollaborator exists
+    if (!setActiveCollaborator) return; 
 
     const selected = collaborators.find(c => c.id === collaboratorId);
     if (selected) {
@@ -244,7 +244,7 @@ export function AppSidebar() {
   };
 
   const handlePasswordPromptSubmit = async () => {
-    if (!currentUser || !currentUser.email || !targetAdminCollaboratorToSwitch || !setActiveCollaborator) return; // Check setActiveCollaborator
+    if (!currentUser || !currentUser.email || !targetAdminCollaboratorToSwitch || !setActiveCollaborator) return; 
     if (!passwordForReauth) {
       toast({ title: "Errore", description: "La password è richiesta.", variant: "destructive" });
       return;
@@ -343,7 +343,7 @@ export function AppSidebar() {
                 ) : (
                   <Link href={item.href} legacyBehavior passHref>
                     <SidebarMenuButton
-                      isActive={currentPathname === item.href && !item.href.includes("?statusFilter=")} // Adjusted isActive logic
+                      isActive={currentPathname === item.href && !item.href.includes("?statusFilter=")} 
                       tooltip={sidebarState === "collapsed" ? item.label : undefined}
                     >
                       <item.icon />
