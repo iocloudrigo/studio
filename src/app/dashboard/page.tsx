@@ -11,7 +11,7 @@ import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboa
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation"; // Import useRouter
+import { useRouter } from "next/navigation"; 
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -33,7 +33,7 @@ export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const { toast } = useToast();
-  const router = useRouter(); // Initialize router
+  const router = useRouter(); 
 
   const [stats, setStats] = useState<DashboardStats>({
     activeRequests: 0,
@@ -67,9 +67,9 @@ export default function DashboardPage() {
       );
       const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
       setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching active requests count:", error);
-      toast({ title: "Errore Conteggio Interventi Aperti", description: "Impossibile caricare il conteggio.", variant: "destructive" });
+      toast({ title: "Errore Conteggio Interventi Aperti", description: error.message || "Impossibile caricare il conteggio.", variant: "destructive" });
       setStats(prev => ({ ...prev, activeRequests: 0 })); 
     } finally {
       setLoadingStats(prev => ({ ...prev, activeRequests: false }));
@@ -85,9 +85,9 @@ export default function DashboardPage() {
       );
       const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
       setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching assigned requests stats:", error);
-      toast({ title: "Errore Conteggio Richieste Assegnate", description: "Impossibile caricare il conteggio.", variant: "destructive" });
+      toast({ title: "Errore Conteggio Richieste Assegnate", description: error.message || "Impossibile caricare il conteggio.", variant: "destructive" });
       setStats(prev => ({ ...prev, assignedRequests: 0 }));
     } finally {
       setLoadingStats(prev => ({ ...prev, assignedRequests: false }));
@@ -103,9 +103,9 @@ export default function DashboardPage() {
       );
       const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
       setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching in-progress requests stats:", error);
-      toast({ title: "Errore Conteggio Tecnici al Lavoro", description: "Impossibile caricare il conteggio.", variant: "destructive" });
+      toast({ title: "Errore Conteggio Tecnici al Lavoro", description: error.message || "Impossibile caricare il conteggio.", variant: "destructive" });
       setStats(prev => ({ ...prev, inProgressRequests: 0 }));
     } finally {
       setLoadingStats(prev => ({ ...prev, inProgressRequests: false }));
@@ -145,9 +145,9 @@ export default function DashboardPage() {
         } as RecentRequest;
       });
       setRecentRequests(fetchedRequests);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching recent requests:", error);
-      toast({ title: "Errore Richieste Recenti", description: "Impossibile caricare le richieste recenti.", variant: "destructive" });
+      toast({ title: "Errore Richieste Recenti", description: error.message || "Impossibile caricare le richieste recenti.", variant: "destructive" });
       setRecentRequests([]);
     } finally {
       setLoadingRequests(false);
@@ -446,7 +446,11 @@ export default function DashboardPage() {
                 <Button 
                   variant="outline" 
                   className="text-accent border-accent hover:bg-accent/10 w-full mt-3"
-                  onClick={() => router.push("/dashboard/ai/suggestions")}
+                  onClick={() => {
+                    setSelectedRowId(null);
+                    setSelectedRequestDetailsForAI(null);
+                    router.push("/dashboard/ai/suggestions");
+                  }}
                 >
                   Ottieni Suggerimento AI
                 </Button>
