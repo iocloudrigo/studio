@@ -87,8 +87,8 @@ export default function DashboardPage() {
         const activeRequestsSnap = await getCountFromServer(activeRequestsQuery);
         setStats(prev => ({ ...prev, activeRequests: activeRequestsSnap.data().count }));
       } catch (error) {
-        console.error("Error fetching active requests stats:", error);
-        toast({ title: "Errore Conteggio Richieste Attive", description: "Impossibile caricare il conteggio.", variant: "destructive" });
+        console.error("Error fetching active requests count:", error);
+        toast({ title: "Errore Conteggio Interventi Aperti", description: "Impossibile caricare il conteggio.", variant: "destructive" });
         setStats(prev => ({ ...prev, activeRequests: 0 }));
       } finally {
         setLoadingStats(prev => ({ ...prev, activeRequests: false }));
@@ -124,7 +124,7 @@ export default function DashboardPage() {
         setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
       } catch (error) {
         console.error("Error fetching in-progress requests stats:", error);
-        toast({ title: "Errore Conteggio Richieste In Corso", description: "Impossibile caricare il conteggio.", variant: "destructive" });
+        toast({ title: "Errore Conteggio Tecnici al Lavoro", description: "Impossibile caricare il conteggio.", variant: "destructive" });
         setStats(prev => ({ ...prev, inProgressRequests: 0 }));
       } finally {
         setLoadingStats(prev => ({ ...prev, inProgressRequests: false }));
@@ -247,7 +247,7 @@ export default function DashboardPage() {
         <Link href={`/dashboard/requests?statusFilter=${encodeURIComponent("in attesa,assegnata,programmata,in corso")}`}>
           <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Richieste Attive</CardTitle>
+              <CardTitle className="text-sm font-medium">Interventi Aperti</CardTitle>
               <FileText className="h-5 w-5 text-primary" />
             </CardHeader>
             <CardContent>
@@ -256,7 +256,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="text-2xl font-bold">{stats.activeRequests ?? 0}</div>
               )}
-              <p className="text-xs text-muted-foreground">Richieste non "completata" o "annullata"</p>
+              <p className="text-xs text-muted-foreground">Richieste da gestire o in corso.</p>
             </CardContent>
           </Card>
         </Link>
@@ -272,14 +272,14 @@ export default function DashboardPage() {
               ) : (
                 <div className="text-2xl font-bold">{stats.assignedRequests ?? 0}</div>
               )}
-              <p className="text-xs text-muted-foreground">Richieste con tecnico assegnato</p>
+              <p className="text-xs text-muted-foreground">Richieste con tecnico assegnato.</p>
             </CardContent>
           </Card>
         </Link>
         <Link href={`/dashboard/requests?statusFilter=${encodeURIComponent("in corso")}`}>
           <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Richieste In Corso</CardTitle>
+              <CardTitle className="text-sm font-medium">Tecnici al lavoro</CardTitle>
               <Activity className="h-5 w-5 text-primary" />
             </CardHeader>
             <CardContent>
@@ -288,7 +288,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="text-2xl font-bold">{stats.inProgressRequests ?? 0}</div>
               )}
-              <p className="text-xs text-muted-foreground">Richieste attualmente in lavorazione</p>
+              <p className="text-xs text-muted-foreground">Tecnici attualmente operativi su un intervento.</p>
             </CardContent>
           </Card>
         </Link>
@@ -402,4 +402,6 @@ export default function DashboardPage() {
     </div>
   );
 }
+    
+
     
