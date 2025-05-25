@@ -149,10 +149,13 @@ export default function LandingPage() {
             <div>
               <h2 className="mb-4 text-3xl font-bold text-primary">A Chi è Rivolto?</h2>
               <p className="mb-4 text-muted-foreground">
-                Incastro è la scelta ideale per tutte le attività che ricevono richieste operative da clienti, e devono organizzare interventi, tecnici o appuntamenti senza perdere tempo.
+                Incastro è pensato per tutte quelle realtà che ricevono richieste operative e devono organizzare interventi sul territorio, ogni giorno.
+              </p>
+              <p className="mb-4 text-muted-foreground">
+                Dai piccoli team di installatori alle imprese multiservizi, fino a cooperative o ditte di assistenza tecnica.
               </p>
               <p className="text-muted-foreground">
-                Dai manutentori agli installatori, dalle imprese multiservizi alle cooperative, se il tuo lavoro parte da una richiesta… Incastro ti semplifica la vita.
+                Se il tuo lavoro inizia da una richiesta cliente e finisce con un tecnico sul campo, Incastro è il tuo alleato operativo.
               </p>
             </div>
           </div>
@@ -383,3 +386,4 @@ export default function LandingPage() {
     </div>
   );
 }
+
