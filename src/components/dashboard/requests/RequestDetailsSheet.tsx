@@ -9,14 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect, type FC } from "react";
 
 import { Timestamp, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase"; // Import auth
+import { db, auth } from "@/lib/firebase";
 import { format } from "date-fns";
 import { Loader2, UserCog } from "lucide-react";
 import { useActiveCollaborator } from '@/app/dashboard/layout';
-import type { User as FirebaseUser } from "firebase/auth"; // Import FirebaseUser
-import { useToast } from "@/hooks/use-toast"; // Import useToast
+import type { User as FirebaseUser } from "firebase/auth";
+import { useToast } from "@/hooks/use-toast";
 
-// Interfaccia per i dati della richiesta nel pannello
 export interface RequestSheetData {
   id: string;
   customer: string;
@@ -37,7 +36,6 @@ export interface RequestSheetData {
   assegnato_a_tecnico_nome?: string | null;
 }
 
-// Interfaccia per i tecnici
 interface Technician {
   id: string;
   nome_completo: string;
@@ -64,7 +62,7 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
   const [selectedStatus, setSelectedStatus] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const { activeCollaborator } = useActiveCollaborator();
-  const { toast } = useToast(); // Inizializza useToast
+  const { toast } = useToast();
 
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [isLoadingTechnicians, setIsLoadingTechnicians] = useState(false);
@@ -82,6 +80,8 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
     if (request) {
       setSelectedStatus(request.status);
       setSelectedTechnicianId(request.assegnato_a_tecnico_id || null);
+      console.log("[RequestDetailsSheet] Initializing sheet: request.status =", request.status, "request.assegnato_a_tecnico_id =", request.assegnato_a_tecnico_id);
+      console.log("[RequestDetailsSheet] Initializing sheet: selectedStatus =", request.status, "selectedTechnicianId =", request.assegnato_a_tecnico_id || null);
     } else {
       setSelectedStatus("");
       setSelectedTechnicianId(null);
@@ -121,63 +121,75 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
   if (!request) return null;
 
   const handleSave = async () => {
-    const currentTechnicianId = selectedTechnicianId || request.assegnato_a_tecnico_id || null;
+    setIsSaving(true);
     let finalStatus = selectedStatus || request.status;
+    
+    console.log("[RequestDetailsSheet] handleSave: initial finalStatus =", finalStatus, "initial selectedTechnicianId =", selectedTechnicianId, "type:", typeof selectedTechnicianId);
 
     // Controllo per lo stato "completata"
-    if (finalStatus === "completata" && !currentTechnicianId) {
+    if (finalStatus === "completata" && selectedTechnicianId === null) {
+      console.error("[RequestDetailsSheet] VALIDATION FAILED: Cannot complete request without an assigned technician.");
       toast({
         title: "Assegnazione Tecnico Mancante",
         description: "Per completare la richiesta, è necessario prima assegnare un tecnico.",
         variant: "destructive",
       });
-      setIsSaving(false); // Resetta lo stato di salvataggio se c'è un errore
-      return; // Interrompi il salvataggio
+      setIsSaving(false);
+      return;
     }
+    console.log("[RequestDetailsSheet] VALIDATION PASSED (or not applicable for completion): Proceeding with save.");
 
-    if (!selectedStatus && selectedTechnicianId === (request.assegnato_a_tecnico_id || null)) {
-        if (finalStatus === request.status) return; 
-    }
-    
-    setIsSaving(true);
+
     let additionalData: Record<string, any> = {};
     
     if (selectedTechnicianId !== (request.assegnato_a_tecnico_id || null)) {
-      additionalData.assegnato_a_tecnico_id = selectedTechnicianId;
+      additionalData.assegnato_a_tecnico_id = selectedTechnicianId; // Può essere null se "NONE" è selezionato
       const selectedTech = technicians.find(t => t.id === selectedTechnicianId);
       additionalData.assegnato_a_tecnico_nome = selectedTech ? selectedTech.nome_completo : null;
       
       if (selectedTechnicianId && finalStatus === "in attesa") {
         finalStatus = "assegnata";
-        setSelectedStatus("assegnata"); 
       }
-      else if (!selectedTechnicianId && finalStatus === "assegnata") {
+      else if (selectedTechnicianId === null && finalStatus === "assegnata") {
         finalStatus = "in attesa";
-        setSelectedStatus("in attesa");
       }
     } else {
         additionalData.assegnato_a_tecnico_id = request.assegnato_a_tecnico_id;
         additionalData.assegnato_a_tecnico_nome = request.assegnato_a_tecnico_nome;
     }
+    
+    console.log("[RequestDetailsSheet] handleSave: finalStatus after technician logic =", finalStatus);
+    console.log("[RequestDetailsSheet] handleSave: additionalData for technician =", { 
+        id: additionalData.assegnato_a_tecnico_id, 
+        nome: additionalData.assegnato_a_tecnico_nome 
+    });
+
 
     if (finalStatus === "completata" && request.status !== "completata") {
       if (activeCollaborator) {
         additionalData.completata_da_collaboratore_id = activeCollaborator.id;
         additionalData.completata_da_collaboratore_nome = activeCollaborator.nome_completo;
-        additionalData.data_completamento = serverTimestamp();
       }
+      additionalData.data_completamento = serverTimestamp();
+      console.log("[RequestDetailsSheet] handleSave: Request marked as completed by", activeCollaborator);
     } else if (finalStatus !== "completata" && request.status === "completata") {
       additionalData.completata_da_collaboratore_id = null;
       additionalData.completata_da_collaboratore_nome = null;
       additionalData.data_completamento = null;
+      console.log("[RequestDetailsSheet] handleSave: Request completion details cleared.");
     }
     
+    // Sovrascrive selectedStatus se finalStatus è stato modificato dalla logica di assegnazione tecnico
+    if (finalStatus !== selectedStatus) {
+        setSelectedStatus(finalStatus);
+    }
+
+    console.log("[RequestDetailsSheet] handleSave: Calling onUpdateRequestStatus with finalStatus =", finalStatus, "and additionalData:", additionalData);
     try {
       await onUpdateRequestStatus(request.id, finalStatus, additionalData);
       onOpenChange(false);
     } catch (error) {
       console.error("Error updating status from sheet:", error);
-      // Il toast di errore dovrebbe essere gestito dalla funzione onUpdateRequestStatus della pagina genitore
     } finally {
       setIsSaving(false);
     }
@@ -199,6 +211,11 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
   };
   
   const currentlyAssignedTechnicianName = request.assegnato_a_tecnico_nome || "Nessun tecnico assegnato";
+
+  const isSaveDisabled = isSaving || (
+    (selectedStatus === request.status) &&
+    (selectedTechnicianId === (request.assegnato_a_tecnico_id || null))
+  );
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -265,8 +282,11 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
             ) : (
                 <>
                 <Select
-                    value={selectedTechnicianId || ""}
-                    onValueChange={(value) => setSelectedTechnicianId(value === "NONE" ? null : value)}
+                    value={selectedTechnicianId || ""} // Se null, il value diventa "" per il Select
+                    onValueChange={(value) => {
+                      console.log("[RequestDetailsSheet] Technician Select onValueChange:", value);
+                      setSelectedTechnicianId(value === "NONE" ? null : value);
+                    }}
                     disabled={isSaving}
                 >
                     <SelectTrigger id="technician-select" className="w-full">
@@ -294,12 +314,7 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
           </SheetClose>
           <Button 
             onClick={handleSave} 
-            disabled={
-                isSaving || 
-                ( (selectedStatus === request.status) && 
-                  ( (selectedTechnicianId || null) === (request.assegnato_a_tecnico_id || null)) 
-                )
-            }
+            disabled={isSaveDisabled}
           >
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isSaving ? "Salvataggio..." : "Salva Modifiche"}
@@ -309,3 +324,5 @@ export const RequestDetailsSheet: FC<RequestDetailsSheetProps> = ({ isOpen, onOp
     </Sheet>
   );
 }
+
+    
