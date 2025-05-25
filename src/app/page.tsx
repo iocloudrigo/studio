@@ -107,11 +107,17 @@ export default function LandingPage() {
           <div className="container mx-auto grid max-w-screen-lg items-center gap-8 px-4 md:grid-cols-2 md:gap-12">
             <div className="order-2 md:order-1">
               <h2 className="mb-4 text-3xl font-bold text-primary">Cos'è Incastro?</h2>
-              <p className="mb-4 text-muted-foreground">
-                Incastro è la soluzione pensata per artigiani, piccole e medie imprese che gestiscono interventi tecnici sul campo. Semplifica la ricezione delle richieste, la pianificazione degli appuntamenti, l'assegnazione dei tecnici e la comunicazione con i clienti.
+              <p className="mb-3 text-muted-foreground">
+                Incastro è la web app che elimina il caos nella gestione degli interventi tecnici.
+              </p>
+              <p className="mb-3 text-muted-foreground">
+                Niente più email da copiare, telefonate perse o fogli Excel sparsi.
+              </p>
+              <p className="mb-3 text-muted-foreground">
+                Le richieste arrivano dal cliente, il sistema le organizza, l’AI suggerisce chi le esegue.
               </p>
               <p className="text-muted-foreground">
-                Con Incastro risparmi ore ogni settimana, riduci errori manuali e lasci che l’AI faccia il lavoro sporco per te.
+                Tu controlli tutto da una dashboard semplice e veloce, su desktop o smartphone.
               </p>
             </div>
             <div className="order-1 md:order-2">
@@ -249,21 +255,21 @@ export default function LandingPage() {
             </h2>
             <div className="grid gap-8 md:grid-cols-3">
               <div className="rounded-lg border bg-card p-6 shadow-sm">
-                <Clock className="mb-4 h-10 w-10 text-accent" /> {/* Cambiata icona */}
+                <Clock className="mb-4 h-10 w-10 text-accent" />
                 <h3 className="mb-2 text-xl font-semibold">Efficienza Operativa</h3>
                 <p className="text-sm text-muted-foreground">
                   Automatizza la gestione delle richieste e ottimizza l'assegnazione dei tecnici, riducendo i tempi morti.
                 </p>
               </div>
               <div className="rounded-lg border bg-card p-6 shadow-sm">
-                <Edit className="mb-4 h-10 w-10 text-accent" /> {/* Cambiata icona */}
+                <Edit className="mb-4 h-10 w-10 text-accent" />
                 <h3 className="mb-2 text-xl font-semibold">Tutto Organizzato</h3>
                 <p className="text-sm text-muted-foreground">
                   Centralizza le informazioni e facilita la comunicazione. Niente più info sparse tra mille chat.
                 </p>
               </div>
               <div className="rounded-lg border bg-card p-6 shadow-sm">
-                <ThumbsUp className="mb-4 h-10 w-10 text-accent" /> {/* Cambiata icona */}
+                <ThumbsUp className="mb-4 h-10 w-10 text-accent" />
                 <h3 className="mb-2 text-xl font-semibold">Soddisfazione Cliente</h3>
                 <p className="text-sm text-muted-foreground">
                   Offri un servizio più rapido e trasparente, con aggiornamenti puntuali e una gestione professionale.
@@ -367,7 +373,7 @@ export default function LandingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t py-8 text-center bg-muted/50"> {/* Aggiunto bg-muted/50 */}
+      <footer className="border-t py-8 text-center bg-muted/50">
         <div className="container mx-auto max-w-screen-lg px-4">
           <p className="text-sm text-muted-foreground">
             &copy; {new Date().getFullYear()} Incastro. Tutti i diritti riservati.
