@@ -5,13 +5,13 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Lightbulb, Loader2, UserCheck, FileText, CalendarDays, Clock, Info } from "lucide-react";
+import { Lightbulb, Loader2, UserCheck, FileText, CalendarDays, Clock, Info, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getDocs, doc, updateDoc, getCountFromServer, Timestamp } from "firebase/firestore";
 import { suggestTechnician, type SuggestTechnicianInput, type SuggestTechnicianOutput, type Technician as AiTechnicianInput } from "@/ai/flows/suggest-technician";
-import type { Technician } from "@/app/dashboard/technicians/page"; // Assuming Technician type is exported here
+import type { Technician } from "@/app/dashboard/technicians/page";
 
 interface ClientRequest {
   id: string;
@@ -39,17 +39,15 @@ export default function AiSuggestionsPage() {
   const { toast } = useToast();
 
   const [pendingRequests, setPendingRequests] = useState<ClientRequest[]>([]);
-  // technicians state is not directly used in UI after techniciansWithLoad is calculated, can be removed if not needed elsewhere
-  // const [technicians, setTechnicians] = useState<Technician[]>([]); 
   const [techniciansWithLoad, setTechniciansWithLoad] = useState<AiTechnicianInput[]>([]);
   
   const [isLoadingPageData, setIsLoadingPageData] = useState(true);
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, AiSuggestionState>>({});
+  const [expandedSuggestions, setExpandedSuggestions] = useState<Record<string, boolean>>({});
 
   const fetchPageData = useCallback(async (currentCompanyId: string) => {
     setIsLoadingPageData(true);
     try {
-      // Fetch pending requests
       const requestsQuery = query(
         collection(db, "richieste_clienti"),
         where("id_azienda", "==", currentCompanyId),
@@ -62,7 +60,6 @@ export default function AiSuggestionsPage() {
       } as ClientRequest));
       setPendingRequests(fetchedRequests);
 
-      // Fetch technicians
       const techniciansQuery = query(
         collection(db, "tecnici"),
         where("id_azienda", "==", currentCompanyId)
@@ -72,9 +69,7 @@ export default function AiSuggestionsPage() {
         id: docSnap.id,
         ...docSnap.data(),
       } as Technician));
-      // setTechnicians(fetchedTechnicians); // Not strictly needed if only techniciansWithLoad is used
 
-      // Calculate load for each technician
       const techsWithLoadPromises = fetchedTechnicians.map(async (tech) => {
         const loadQuery = query(
           collection(db, "richieste_clienti"),
@@ -87,7 +82,7 @@ export default function AiSuggestionsPage() {
           id: tech.id,
           nome_completo: tech.nome_completo,
           competenze: tech.competenze || [],
-          stato: tech.stato as AiTechnicianInput['stato'], // Cast to ensure enum type match
+          stato: tech.stato as AiTechnicianInput['stato'],
           currentLoad: loadSnapshot.data().count,
         };
       });
@@ -112,7 +107,6 @@ export default function AiSuggestionsPage() {
         setCurrentUser(null);
         setCompanyId(null);
         setPendingRequests([]);
-        // setTechnicians([]);
         setTechniciansWithLoad([]);
         setIsLoadingPageData(false);
       }
@@ -120,39 +114,87 @@ export default function AiSuggestionsPage() {
     return () => unsubscribe();
   }, [fetchPageData]);
 
-  const handleGetAiSuggestion = async (request: ClientRequest) => {
-    if (!companyId || techniciansWithLoad.length === 0) {
-      toast({ title: "Dati Mancanti", description: "Nessun tecnico disponibile per generare suggerimenti.", variant: "destructive" });
-      return;
-    }
+  const handleGetOrToggleAiSuggestion = async (request: ClientRequest) => {
+    const existingSuggestionState = aiSuggestions[request.id];
 
-    setAiSuggestions(prev => ({
-      ...prev,
-      [request.id]: { suggestion: null, isLoading: true, error: null },
-    }));
+    if (existingSuggestionState?.suggestion || existingSuggestionState?.error) {
+      // Se esiste un suggerimento (o errore), facciamo il toggle della visibilità
+      setExpandedSuggestions(prev => ({
+        ...prev,
+        [request.id]: !prev[request.id],
+      }));
+    } else {
+      // Altrimenti, carichiamo il suggerimento
+      if (!companyId || techniciansWithLoad.length === 0) {
+        toast({ title: "Dati Mancanti", description: "Nessun tecnico disponibile per generare suggerimenti.", variant: "destructive" });
+        return;
+      }
 
-    try {
-      const input: SuggestTechnicianInput = {
-        requestId: request.id,
-        requestDescription: `${request.tipo_servizio}. ${request.note_aggiuntive || ''}`.trim(),
-        clientPreferredDay: request.giorno_preferito,
-        clientPreferredTimeSlot: request.fascia_oraria,
-        technicianList: techniciansWithLoad,
-      };
-      const suggestionOutput = await suggestTechnician(input);
       setAiSuggestions(prev => ({
         ...prev,
-        [request.id]: { suggestion: suggestionOutput, isLoading: false, error: null },
+        [request.id]: { suggestion: null, isLoading: true, error: null },
       }));
-    } catch (error: any) {
-      console.error("Error getting AI suggestion:", error);
-      toast({ title: "Errore Suggerimento AI", description: error.message || "Impossibile ottenere un suggerimento.", variant: "destructive" });
-      setAiSuggestions(prev => ({
-        ...prev,
-        [request.id]: { suggestion: null, isLoading: false, error: error.message || "Errore sconosciuto" },
-      }));
+      setExpandedSuggestions(prev => ({ ...prev, [request.id]: true })); // Mostra mentre carica
+
+      try {
+        const input: SuggestTechnicianInput = {
+          requestId: request.id,
+          requestDescription: `${request.tipo_servizio}. ${request.note_aggiuntive || ''}`.trim(),
+          clientPreferredDay: request.giorno_preferito,
+          clientPreferredTimeSlot: request.fascia_oraria,
+          technicianList: techniciansWithLoad,
+        };
+        const suggestionOutput = await suggestTechnician(input);
+        setAiSuggestions(prev => ({
+          ...prev,
+          [request.id]: { suggestion: suggestionOutput, isLoading: false, error: null },
+        }));
+      } catch (error: any) {
+        console.error("Error getting AI suggestion:", error);
+        toast({ title: "Errore Suggerimento AI", description: error.message || "Impossibile ottenere un suggerimento.", variant: "destructive" });
+        setAiSuggestions(prev => ({
+          ...prev,
+          [request.id]: { suggestion: null, isLoading: false, error: error.message || "Errore sconosciuto" },
+        }));
+      }
     }
   };
+  
+  const handleForceRefreshSuggestion = async (request: ClientRequest) => {
+    if (!companyId || techniciansWithLoad.length === 0) {
+        toast({ title: "Dati Mancanti", description: "Nessun tecnico disponibile per generare suggerimenti.", variant: "destructive" });
+        return;
+      }
+
+      setAiSuggestions(prev => ({
+        ...prev,
+        [request.id]: { suggestion: null, isLoading: true, error: null },
+      }));
+      setExpandedSuggestions(prev => ({ ...prev, [request.id]: true })); 
+
+      try {
+        const input: SuggestTechnicianInput = {
+          requestId: request.id,
+          requestDescription: `${request.tipo_servizio}. ${request.note_aggiuntive || ''}`.trim(),
+          clientPreferredDay: request.giorno_preferito,
+          clientPreferredTimeSlot: request.fascia_oraria,
+          technicianList: techniciansWithLoad,
+        };
+        const suggestionOutput = await suggestTechnician(input);
+        setAiSuggestions(prev => ({
+          ...prev,
+          [request.id]: { suggestion: suggestionOutput, isLoading: false, error: null },
+        }));
+      } catch (error: any) {
+        console.error("Error getting AI suggestion:", error);
+        toast({ title: "Errore Suggerimento AI", description: error.message || "Impossibile ottenere un suggerimento.", variant: "destructive" });
+        setAiSuggestions(prev => ({
+          ...prev,
+          [request.id]: { suggestion: null, isLoading: false, error: error.message || "Errore sconosciuto" },
+        }));
+      }
+  };
+
 
   const handleAssignTechnician = async (requestId: string, technician: NonNullable<SuggestTechnicianOutput['suggestedTechnician']>) => {
     if (!companyId) return;
@@ -171,8 +213,13 @@ export default function AiSuggestionsPage() {
         delete newState[requestId];
         return newState;
       });
+      setExpandedSuggestions(prev => {
+        const newState = { ...prev };
+        delete newState[requestId];
+        return newState;
+      });
       
-      if (companyId) fetchPageData(companyId); // Re-fetch to update technician loads and pending requests list
+      if (companyId) fetchPageData(companyId);
 
     } catch (error) {
       console.error("Error assigning technician:", error);
@@ -212,10 +259,21 @@ export default function AiSuggestionsPage() {
         </Card>
       )}
 
-      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 items-start"> {/* Added items-start */}
+      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 items-start">
         {pendingRequests.map((req) => {
           const currentSuggestionState = aiSuggestions[req.id];
-          const hasExistingSuggestionOrError = !!currentSuggestionState?.suggestion || !!currentSuggestionState?.error;
+          const isExpanded = expandedSuggestions[req.id] || false;
+          const hasLoadedSuggestionOrError = !!currentSuggestionState?.suggestion || !!currentSuggestionState?.error;
+
+          let buttonText = "Ottieni Suggerimento";
+          let buttonIcon = <Lightbulb className="mr-2 h-4 w-4" />;
+          if (currentSuggestionState?.isLoading) {
+            buttonText = "Attendere...";
+            buttonIcon = <Loader2 className="mr-2 h-4 w-4 animate-spin" />;
+          } else if (hasLoadedSuggestionOrError) {
+            buttonText = isExpanded ? "Nascondi Suggerimento" : "Mostra Suggerimento";
+            buttonIcon = isExpanded ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />;
+          }
 
           return (
             <Card key={req.id} className="shadow-lg flex flex-col">
@@ -234,49 +292,58 @@ export default function AiSuggestionsPage() {
                   {!req.giorno_preferito && !req.fascia_oraria && <p>Nessuna preferenza oraria specificata.</p>}
                 </div>
 
-                {currentSuggestionState?.suggestion && (
-                  <Alert variant={currentSuggestionState.suggestion.suggestedTechnician ? "default" : "destructive"} className="mt-4">
-                    <Lightbulb className="h-4 w-4" />
-                    <AlertTitle>
-                      {currentSuggestionState.suggestion.suggestedTechnician 
-                        ? `Suggerimento AI: ${currentSuggestionState.suggestion.suggestedTechnician.nome_completo}`
-                        : "Nessun Tecnico Suggerito"}
-                    </AlertTitle>
-                    <AlertDescription className="text-xs space-y-1">
-                      <p>{currentSuggestionState.suggestion.reasoning}</p>
-                      {currentSuggestionState.suggestion.suggestedTimeNotes && <p><strong>Note Programmazione:</strong> {currentSuggestionState.suggestion.suggestedTimeNotes}</p>}
-                    </AlertDescription>
-                  </Alert>
-                )}
-                {currentSuggestionState?.error && (
-                  <Alert variant="destructive" className="mt-4">
-                    <Lightbulb className="h-4 w-4" /> {/* Consider using a different icon for errors, e.g., AlertTriangle */}
-                    <AlertTitle>Errore Suggerimento</AlertTitle>
-                    <AlertDescription className="text-xs">{currentSuggestionState.error}</AlertDescription>
-                  </Alert>
+                {isExpanded && hasLoadedSuggestionOrError && (
+                  <>
+                    {currentSuggestionState?.suggestion && (
+                      <Alert variant={currentSuggestionState.suggestion.suggestedTechnician ? "default" : "destructive"} className="mt-4">
+                        <Lightbulb className="h-4 w-4" />
+                        <AlertTitle>
+                          {currentSuggestionState.suggestion.suggestedTechnician 
+                            ? `Suggerimento AI: ${currentSuggestionState.suggestion.suggestedTechnician.nome_completo}`
+                            : "Nessun Tecnico Suggerito"}
+                        </AlertTitle>
+                        <AlertDescription className="text-xs space-y-1">
+                          <p>{currentSuggestionState.suggestion.reasoning}</p>
+                          {currentSuggestionState.suggestion.suggestedTimeNotes && <p><strong>Note Programmazione:</strong> {currentSuggestionState.suggestion.suggestedTimeNotes}</p>}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {currentSuggestionState?.error && (
+                      <Alert variant="destructive" className="mt-4">
+                        <Lightbulb className="h-4 w-4" />
+                        <AlertTitle>Errore Suggerimento</AlertTitle>
+                        <AlertDescription className="text-xs">{currentSuggestionState.error}</AlertDescription>
+                      </Alert>
+                    )}
+                  </>
                 )}
               </CardContent>
-              <div className="p-4 border-t mt-auto flex flex-wrap gap-2 justify-end"> {/* Added flex-wrap */}
+              <div className="p-4 border-t mt-auto flex flex-wrap gap-2 justify-end">
                 <Button
                   variant="outline"
-                  onClick={() => handleGetAiSuggestion(req)}
+                  onClick={() => handleGetOrToggleAiSuggestion(req)}
                   disabled={currentSuggestionState?.isLoading || techniciansWithLoad.length === 0}
-                  size="sm" // Added size sm for better fit with flex-wrap
+                  size="sm"
                 >
-                  {currentSuggestionState?.isLoading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Lightbulb className="mr-2 h-4 w-4" />
-                  )}
-                  {currentSuggestionState?.isLoading 
-                    ? "Attendere..." 
-                    : hasExistingSuggestionOrError ? "Ottieni Nuovo Suggerimento" : "Ottieni Suggerimento"}
+                  {buttonIcon}
+                  {buttonText}
                 </Button>
-                {currentSuggestionState?.suggestion?.suggestedTechnician && (
+                {hasLoadedSuggestionOrError && (
+                   <Button
+                    variant="outline"
+                    onClick={() => handleForceRefreshSuggestion(req)}
+                    disabled={currentSuggestionState?.isLoading || techniciansWithLoad.length === 0}
+                    size="sm"
+                    title="Aggiorna Suggerimento"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                )}
+                {isExpanded && currentSuggestionState?.suggestion?.suggestedTechnician && (
                   <Button
                     className="bg-accent hover:bg-accent/90 text-accent-foreground"
                     onClick={() => handleAssignTechnician(req.id, currentSuggestionState.suggestion!.suggestedTechnician!)}
-                    size="sm" // Added size sm
+                    size="sm"
                   >
                     <UserCheck className="mr-2 h-4 w-4" />
                     Assegna a {currentSuggestionState.suggestion.suggestedTechnician.nome_completo.split(" ")[0]}
@@ -290,3 +357,5 @@ export default function AiSuggestionsPage() {
     </div>
   );
 }
+
+    
