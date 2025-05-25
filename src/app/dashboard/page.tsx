@@ -5,12 +5,12 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity, CalendarDays } from "lucide-react";
+import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity, CalendarDays, UserCheck, Clock, Edit3, Search, Info } from "lucide-react"; // Aggiunto UserCheck, Edit3, Search, Info
 import { Skeleton } from "@/components/ui/skeleton";
 import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils"; // Import cn utility
+import { cn } from "@/lib/utils"; 
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -50,8 +50,10 @@ export default function DashboardPage() {
   const [loadingRequests, setLoadingRequests] = useState(true);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<RequestSheetData | null>(null);
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null); // Stato per la riga selezionata
+  const [selectedRequestForSheet, setSelectedRequestForSheet] = useState<RequestSheetData | null>(null);
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [selectedRequestDetailsForAI, setSelectedRequestDetailsForAI] = useState<RecentRequest | null>(null);
+
 
   const fetchDashboardData = useCallback(async (currentCompanyId: string) => {
     // Fetch Active Requests
@@ -67,7 +69,7 @@ export default function DashboardPage() {
     } catch (error) {
       console.error("Error fetching active requests count:", error);
       toast({ title: "Errore Conteggio Interventi Aperti", description: "Impossibile caricare il conteggio.", variant: "destructive" });
-      setStats(prev => ({ ...prev, activeRequests: 0 })); // Fallback a 0
+      setStats(prev => ({ ...prev, activeRequests: 0 })); 
     } finally {
       setLoadingStats(prev => ({ ...prev, activeRequests: false }));
     }
@@ -114,7 +116,7 @@ export default function DashboardPage() {
       const requestsQuery = query(
         collection(db, "richieste_clienti"),
         where("id_azienda", "==", currentCompanyId),
-        where("stato", "not-in", ["completata", "annullata"]), // Esclude completate e annullate
+        where("stato", "not-in", ["completata", "annullata"]), 
         orderBy("created_at", "desc"),
         limit(10)
       );
@@ -183,31 +185,35 @@ export default function DashboardPage() {
 
       if (newStatus === "completata" || newStatus === "annullata") {
         setRecentRequests(prevRequests => prevRequests.filter(req => req.id !== requestId));
+        if (selectedRowId === requestId) {
+          setSelectedRowId(null);
+          setSelectedRequestDetailsForAI(null);
+        }
       } else {
         setRecentRequests(prevRequests =>
           prevRequests.map(req =>
             req.id === requestId ? { ...req, status: newStatus, ...additionalData } : req
           )
         );
+        // Se la richiesta selezionata per AI viene aggiornata ma rimane attiva, aggiorna i suoi dettagli
+        if (selectedRowId === requestId && selectedRequestDetailsForAI) {
+            setSelectedRequestDetailsForAI(prev => prev ? {...prev, status: newStatus, ...additionalData} : null);
+        }
       }
       
-      // Refetch stats that might be affected
       if (companyId) {
-        // Refetch Active Requests Count
         setLoadingStats(prev => ({ ...prev, activeRequests: true }));
         getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "not-in", ["completata", "annullata"])))
           .then(snap => setStats(prev => ({ ...prev, activeRequests: snap.data().count })))
           .catch(err => { console.error("Error refetching active requests:", err); toast({ title: "Errore Aggiornamento Statistiche", description: "Impossibile aggiornare conteggio interventi aperti.", variant: "destructive" });})
           .finally(() => setLoadingStats(prev => ({...prev, activeRequests: false })));
 
-        // Refetch Assigned Requests Count
         setLoadingStats(prev => ({ ...prev, assignedRequests: true }));
         getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "assegnata")))
           .then(snap => setStats(prev => ({ ...prev, assignedRequests: snap.data().count })))
           .catch(err => { console.error("Error refetching assigned requests:", err); toast({ title: "Errore Aggiornamento Statistiche", description: "Impossibile aggiornare conteggio richieste assegnate.", variant: "destructive" });})
           .finally(() => setLoadingStats(prev => ({...prev, assignedRequests: false })));
         
-        // Refetch In Progress Requests Count
         setLoadingStats(prev => ({ ...prev, inProgressRequests: true }));
         getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "in corso")))
           .then(snap => setStats(prev => ({ ...prev, inProgressRequests: snap.data().count })))
@@ -225,12 +231,16 @@ export default function DashboardPage() {
   const handleRowClick = (req: RecentRequest) => {
     if (req.status === "in attesa") {
       if (selectedRowId === req.id) {
-        setSelectedRowId(null); // Deseleziona se si clicca di nuovo la stessa riga
+        setSelectedRowId(null);
+        setSelectedRequestDetailsForAI(null);
       } else {
         setSelectedRowId(req.id);
+        setSelectedRequestDetailsForAI(req);
       }
     } else {
-      setSelectedRowId(null); // Deseleziona se si clicca una riga non "in attesa"
+      // Se si clicca una riga non "in attesa", deseleziona qualsiasi cosa
+      setSelectedRowId(null);
+      setSelectedRequestDetailsForAI(null);
     }
   };
 
@@ -303,7 +313,7 @@ export default function DashboardPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Ultime Richieste</CardTitle> 
-          <CardDescription>Visualizza le richieste di intervento più recenti che necessitano attenzione.</CardDescription>
+          <CardDescription>Visualizza le richieste di intervento più recenti che necessitano attenzione. Clicca su una richiesta "in attesa" per vederla nella card Assistenza AI.</CardDescription>
         </CardHeader>
         <CardContent>
           {loadingRequests ? (
@@ -333,7 +343,7 @@ export default function DashboardPage() {
                         className={cn(
                           "border-b hover:bg-muted/50",
                           req.status === "in attesa" && "cursor-pointer",
-                          selectedRowId === req.id && req.status === "in attesa" && "bg-accent/20" // Stile per riga selezionata
+                          selectedRowId === req.id && req.status === "in attesa" && "bg-accent/20" 
                         )}
                         onClick={() => handleRowClick(req)}
                       >
@@ -359,8 +369,8 @@ export default function DashboardPage() {
                             variant="outline"
                             size="sm"
                             onClick={(e) => {
-                              e.stopPropagation(); // Impedisce che il click sul pulsante attivi l'onClick della riga
-                              setSelectedRequest(req);
+                              e.stopPropagation(); 
+                              setSelectedRequestForSheet(req);
                               setIsSheetOpen(true);
                             }}
                           >
@@ -398,26 +408,49 @@ export default function DashboardPage() {
             <CardTitle>Assistenza AI</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-            <Lightbulb className="h-12 w-12 mb-4 text-primary opacity-70" />
-            <p className="mb-3 text-center">Ottimizza l'assegnazione dei tecnici con i suggerimenti dell'AI.</p>
-            <Button 
-              variant="outline" 
-              className="text-accent border-accent hover:bg-accent/10"
-              asChild
-            >
-              <Link href="/dashboard/ai/suggestions">Richiedi Suggerimento AI</Link>
-            </Button>
+            {!selectedRequestDetailsForAI ? (
+              <>
+                <Lightbulb className="h-12 w-12 mb-4 text-primary opacity-70" />
+                <p className="mb-3 text-center">Seleziona una richiesta "in attesa" dalla tabella sopra per vedere i dettagli qui e richiedere un suggerimento AI.</p>
+                 <Button 
+                    variant="outline" 
+                    className="text-accent border-accent hover:bg-accent/10"
+                    asChild
+                  >
+                    <Link href="/dashboard/ai/suggestions">Vai a Suggerimenti AI</Link>
+                  </Button>
+              </>
+            ) : (
+              <div className="w-full text-left space-y-2 text-sm">
+                <h3 className="font-semibold text-base text-foreground">Dettagli Richiesta per AI: <span className="text-primary">{selectedRequestDetailsForAI.id.substring(0,6)}...</span></h3>
+                <p><strong className="text-muted-foreground">Cliente:</strong> {selectedRequestDetailsForAI.customer}</p>
+                <p><strong className="text-muted-foreground">Servizio:</strong> {selectedRequestDetailsForAI.service}</p>
+                {selectedRequestDetailsForAI.note_aggiuntive && <p><strong className="text-muted-foreground">Note:</strong> {selectedRequestDetailsForAI.note_aggiuntive}</p>}
+                {selectedRequestDetailsForAI.giorno_preferito && <p className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/> Giorno: {selectedRequestDetailsForAI.giorno_preferito}</p>}
+                {selectedRequestDetailsForAI.fascia_oraria && <p className="flex items-center gap-1"><Clock className="h-3 w-3"/> Fascia: {selectedRequestDetailsForAI.fascia_oraria}</p>}
+                <Button 
+                  variant="outline" 
+                  className="text-accent border-accent hover:bg-accent/10 w-full mt-3"
+                  asChild
+                >
+                  {/* In futuro, questo link potrebbe passare l'ID della richiesta: /dashboard/ai/suggestions?requestId=${selectedRequestDetailsForAI.id} */}
+                  <Link href="/dashboard/ai/suggestions">Ottieni Suggerimento AI</Link>
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
-      {selectedRequest && (
+      {selectedRequestForSheet && (
         <RequestDetailsSheet
           isOpen={isSheetOpen}
           onOpenChange={setIsSheetOpen}
-          request={selectedRequest}
+          request={selectedRequestForSheet}
           onUpdateRequestStatus={handleUpdateRequestStatus}
         />
       )}
     </div>
   );
 }
+
+    
