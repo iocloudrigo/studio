@@ -73,7 +73,7 @@ const navItems = [
     subItems: [
       { href: "/dashboard/requests", label: "Tutte le Richieste", icon: FileText },
       { href: "/dashboard/requests/new", label: "Nuova Richiesta", icon: MessageSquarePlus },
-      { href: "/dashboard/requests/suggestions", label: "Suggerimenti AI", icon: Lightbulb },
+      { href: "/dashboard/requests/suggestions", label: "Assegnazione AI", icon: Lightbulb }, // MODIFICATO QUI
       { href: "/dashboard/requests?statusFilter=completata,annullata", label: "Archiviate", icon: Archive },
     ]
   },
@@ -111,14 +111,16 @@ export function AppSidebar() {
         setCurrentUser(null);
         setCompanyId(null);
         setCollaborators([]);
-        setActiveCollaborator(null);
+        if (setActiveCollaborator) { // Check if setActiveCollaborator exists before calling
+          setActiveCollaborator(null);
+        }
       }
     });
     return () => unsubscribe();
   }, [setActiveCollaborator]);
 
   const setDefaultActiveCollaboratorInContext = useCallback((collaboratorList: Collaborator[], user: FirebaseUser | null) => {
-    if (user && collaboratorList.length > 0) {
+    if (user && collaboratorList.length > 0 && setActiveCollaborator) { // Check setActiveCollaborator
       const adminCollaborator = collaboratorList.find(c => c.email === user.email && c.ruolo === "Amministratore");
       let defaultActive: ActiveCollaboratorStorageData | null = null;
       if (adminCollaborator) {
@@ -136,7 +138,7 @@ export function AppSidebar() {
         };
       }
       setActiveCollaborator(defaultActive);
-    } else {
+    } else if (setActiveCollaborator) { // Check setActiveCollaborator
       setActiveCollaborator(null);
     }
   }, [setActiveCollaborator]);
@@ -157,7 +159,7 @@ export function AppSidebar() {
       } as Collaborator));
       setCollaborators(fetchedCollaborators);
 
-      if (!isLoadingActiveCollaborator) {
+      if (!isLoadingActiveCollaborator && setActiveCollaborator) { // Check setActiveCollaborator
         const currentActive = activeCollaborator;
         if (!currentActive || !fetchedCollaborators.some(c => c.id === currentActive.id)) {
           setDefaultActiveCollaboratorInContext(fetchedCollaborators, auth.currentUser);
@@ -203,7 +205,9 @@ export function AppSidebar() {
         title: "Logout Effettuato",
         description: "Sei stato disconnesso con successo.",
       });
-      setActiveCollaborator(null);
+      if (setActiveCollaborator) { // Check setActiveCollaborator
+        setActiveCollaborator(null);
+      }
       router.push("/");
     } catch (error) {
       console.error("Errore durante il logout:", error);
@@ -216,6 +220,8 @@ export function AppSidebar() {
   };
 
   const handleActiveCollaboratorChange = (collaboratorId: string) => {
+    if (!setActiveCollaborator) return; // Check if setActiveCollaborator exists
+
     const selected = collaborators.find(c => c.id === collaboratorId);
     if (selected) {
       const newActiveTarget: ActiveCollaboratorStorageData = {
@@ -238,7 +244,7 @@ export function AppSidebar() {
   };
 
   const handlePasswordPromptSubmit = async () => {
-    if (!currentUser || !currentUser.email || !targetAdminCollaboratorToSwitch) return;
+    if (!currentUser || !currentUser.email || !targetAdminCollaboratorToSwitch || !setActiveCollaborator) return; // Check setActiveCollaborator
     if (!passwordForReauth) {
       toast({ title: "Errore", description: "La password è richiesta.", variant: "destructive" });
       return;
@@ -449,6 +455,3 @@ export function AppSidebar() {
     </>
   );
 }
-
-
-    
