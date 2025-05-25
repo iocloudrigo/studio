@@ -118,13 +118,11 @@ export default function AiSuggestionsPage() {
     const existingSuggestionState = aiSuggestions[request.id];
 
     if (existingSuggestionState?.suggestion || existingSuggestionState?.error) {
-      // Se esiste un suggerimento (o errore), facciamo il toggle della visibilità
       setExpandedSuggestions(prev => ({
         ...prev,
         [request.id]: !prev[request.id],
       }));
     } else {
-      // Altrimenti, carichiamo il suggerimento
       if (!companyId || techniciansWithLoad.length === 0) {
         toast({ title: "Dati Mancanti", description: "Nessun tecnico disponibile per generare suggerimenti.", variant: "destructive" });
         return;
@@ -134,7 +132,7 @@ export default function AiSuggestionsPage() {
         ...prev,
         [request.id]: { suggestion: null, isLoading: true, error: null },
       }));
-      setExpandedSuggestions(prev => ({ ...prev, [request.id]: true })); // Mostra mentre carica
+      setExpandedSuggestions(prev => ({ ...prev, [request.id]: true })); 
 
       try {
         const input: SuggestTechnicianInput = {
