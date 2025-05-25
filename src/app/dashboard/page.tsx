@@ -31,9 +31,9 @@ export default function DashboardPage() {
   const { toast } = useToast();
 
   const [stats, setStats] = useState<DashboardStats>({
-    activeRequests: null,
-    assignedRequests: null,
-    inProgressRequests: null,
+    activeRequests: 0,
+    assignedRequests: 0,
+    inProgressRequests: 0,
   });
   const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([]);
 
@@ -386,7 +386,7 @@ export default function DashboardPage() {
             <Lightbulb className="h-12 w-12 mb-4 text-primary opacity-70" />
             <p className="mb-3 text-center">Richiedi un suggerimento al nostro assistente AI per ottimizzare l'assegnazione dei tecnici.</p>
             <Button variant="outline" asChild className="text-accent border-accent hover:bg-accent/10">
-                <Link href="/dashboard/requests/suggestions">Richiedi Suggerimento AI</Link>
+                <Link href="/dashboard/ai/suggestions">Richiedi Suggerimento AI</Link>
             </Button>
           </CardContent>
         </Card>
