@@ -1,11 +1,11 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react"; // Aggiunto useRef
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity, CalendarDays, UserCheck, Clock, Edit3, Search, Info } from "lucide-react"; // Aggiunto UserCheck, Edit3, Search, Info
+import { FileText, ClipboardCheck, PlusCircle, Lightbulb, Activity, CalendarDays, UserCheck, Clock, Edit3, Search, Info } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RequestDetailsSheet, type RequestSheetData } from "@/components/dashboard/requests/RequestDetailsSheet";
 import { useToast } from "@/hooks/use-toast";
@@ -26,9 +26,7 @@ export interface RecentRequest extends RequestSheetData {
   // RequestSheetData già include id_azienda, assegnato_a_tecnico_id, assegnato_a_tecnico_nome
 }
 
-const activeRequestStatusesForCount = ["in attesa", "assegnata", "programmata", "in corso"];
-const activeRequestStatusesForLink = encodeURIComponent(activeRequestStatusesForCount.join(','));
-
+const activeRequestStatusesForLink = encodeURIComponent("in attesa,assegnata,programmata,in corso");
 
 export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
@@ -51,12 +49,13 @@ export default function DashboardPage() {
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedRequestForSheet, setSelectedRequestForSheet] = useState<RequestSheetData | null>(null);
+  
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [selectedRequestDetailsForAI, setSelectedRequestDetailsForAI] = useState<RecentRequest | null>(null);
-
+  const tableContainerRef = useRef<HTMLDivElement>(null); // Riferimento per la tabella
 
   const fetchDashboardData = useCallback(async (currentCompanyId: string) => {
-    // Fetch Active Requests
+    // Fetch Active Requests ("Interventi Aperti")
     setLoadingStats(prev => ({ ...prev, activeRequests: true }));
     try {
       const activeRequestsQuery = query(
@@ -195,25 +194,27 @@ export default function DashboardPage() {
             req.id === requestId ? { ...req, status: newStatus, ...additionalData } : req
           )
         );
-        // Se la richiesta selezionata per AI viene aggiornata ma rimane attiva, aggiorna i suoi dettagli
         if (selectedRowId === requestId && selectedRequestDetailsForAI) {
             setSelectedRequestDetailsForAI(prev => prev ? {...prev, status: newStatus, ...additionalData} : null);
         }
       }
       
       if (companyId) {
+        // Recalculate active requests
         setLoadingStats(prev => ({ ...prev, activeRequests: true }));
         getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "not-in", ["completata", "annullata"])))
           .then(snap => setStats(prev => ({ ...prev, activeRequests: snap.data().count })))
           .catch(err => { console.error("Error refetching active requests:", err); toast({ title: "Errore Aggiornamento Statistiche", description: "Impossibile aggiornare conteggio interventi aperti.", variant: "destructive" });})
           .finally(() => setLoadingStats(prev => ({...prev, activeRequests: false })));
 
+        // Recalculate assigned requests
         setLoadingStats(prev => ({ ...prev, assignedRequests: true }));
         getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "assegnata")))
           .then(snap => setStats(prev => ({ ...prev, assignedRequests: snap.data().count })))
           .catch(err => { console.error("Error refetching assigned requests:", err); toast({ title: "Errore Aggiornamento Statistiche", description: "Impossibile aggiornare conteggio richieste assegnate.", variant: "destructive" });})
           .finally(() => setLoadingStats(prev => ({...prev, assignedRequests: false })));
         
+        // Recalculate in-progress requests
         setLoadingStats(prev => ({ ...prev, inProgressRequests: true }));
         getCountFromServer(query(collection(db, "richieste_clienti"), where("id_azienda", "==", companyId), where("stato", "==", "in corso")))
           .then(snap => setStats(prev => ({ ...prev, inProgressRequests: snap.data().count })))
@@ -235,14 +236,28 @@ export default function DashboardPage() {
         setSelectedRequestDetailsForAI(null);
       } else {
         setSelectedRowId(req.id);
-        setSelectedRequestDetailsForAI(req);
+        const requestDetails = recentRequests.find(r => r.id === req.id);
+        setSelectedRequestDetailsForAI(requestDetails || null);
       }
     } else {
-      // Se si clicca una riga non "in attesa", deseleziona qualsiasi cosa
       setSelectedRowId(null);
       setSelectedRequestDetailsForAI(null);
     }
   };
+
+  // Effect per gestire il click fuori dalla tabella
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (tableContainerRef.current && !tableContainerRef.current.contains(event.target as Node) && selectedRowId) {
+        setSelectedRowId(null);
+        setSelectedRequestDetailsForAI(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [selectedRowId]); // Aggiunto selectedRowId come dipendenza per ri-agganciare l'event listener se necessario
 
 
   return (
@@ -323,66 +338,68 @@ export default function DashboardPage() {
               <Skeleton className="h-8 w-full" />
             </div>
           ) : recentRequests.length > 0 ? (
-            <ScrollArea className="h-[380px] w-full">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="sticky top-0 bg-card z-10">
-                    <tr className="border-b">
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground">ID</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Cliente</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Servizio</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Tecnico Assegnato</th>
-                      <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Stato</th>
-                      <th className="p-3 text-right text-sm font-semibold text-muted-foreground">Azioni</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentRequests.map((req) => (
-                      <tr 
-                        key={req.id} 
-                        className={cn(
-                          "border-b hover:bg-muted/50",
-                          req.status === "in attesa" && "cursor-pointer",
-                          selectedRowId === req.id && req.status === "in attesa" && "bg-accent/20" 
-                        )}
-                        onClick={() => handleRowClick(req)}
-                      >
-                        <td className="p-3 text-sm font-medium text-primary">{req.id.substring(0, 6)}...</td>
-                        <td className="p-3 text-sm">{req.customer}</td>
-                        <td className="p-3 text-sm">{req.service}</td>
-                        <td className="p-3 text-sm">{req.assegnato_a_tecnico_nome || ""}</td>
-                        <td className="p-3 text-sm">
-                          <span className={`px-2 py-1 text-xs rounded-full capitalize ${
-                            req.status === "completata" ? "bg-green-100 text-green-700" :
-                            req.status === "assegnata" ? "bg-blue-100 text-blue-700" :
-                            req.status === "in attesa" ? "bg-orange-100 text-orange-700" :
-                            req.status === "programmata" ? "bg-yellow-100 text-yellow-700" :
-                            req.status === "in corso" ? "bg-indigo-100 text-indigo-700" :
-                            req.status === "annullata" ? "bg-red-100 text-red-700" :
-                            "bg-gray-100 text-gray-700"
-                          }`}>
-                            {req.status.replace("_", " ")}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right text-sm">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation(); 
-                              setSelectedRequestForSheet(req);
-                              setIsSheetOpen(true);
-                            }}
-                          >
-                            Dettagli
-                          </Button>
-                        </td>
+            <div ref={tableContainerRef}> {/* Wrapper per la tabella */}
+              <ScrollArea className="h-[380px] w-full">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="sticky top-0 bg-card z-10">
+                      <tr className="border-b">
+                        <th className="p-3 text-left text-sm font-semibold text-muted-foreground">ID</th>
+                        <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Cliente</th>
+                        <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Servizio</th>
+                        <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Tecnico Assegnato</th>
+                        <th className="p-3 text-left text-sm font-semibold text-muted-foreground">Stato</th>
+                        <th className="p-3 text-right text-sm font-semibold text-muted-foreground">Azioni</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </ScrollArea>
+                    </thead>
+                    <tbody>
+                      {recentRequests.map((req) => (
+                        <tr 
+                          key={req.id} 
+                          className={cn(
+                            "border-b hover:bg-muted/50",
+                            req.status === "in attesa" && "cursor-pointer",
+                            selectedRowId === req.id && req.status === "in attesa" && "bg-accent/20" 
+                          )}
+                          onClick={() => handleRowClick(req)}
+                        >
+                          <td className="p-3 text-sm font-medium text-primary">{req.id.substring(0, 6)}...</td>
+                          <td className="p-3 text-sm">{req.customer}</td>
+                          <td className="p-3 text-sm">{req.service}</td>
+                          <td className="p-3 text-sm">{req.assegnato_a_tecnico_nome || ""}</td>
+                          <td className="p-3 text-sm">
+                            <span className={`px-2 py-1 text-xs rounded-full capitalize ${
+                              req.status === "completata" ? "bg-green-100 text-green-700" :
+                              req.status === "assegnata" ? "bg-blue-100 text-blue-700" :
+                              req.status === "in attesa" ? "bg-orange-100 text-orange-700" :
+                              req.status === "programmata" ? "bg-yellow-100 text-yellow-700" :
+                              req.status === "in corso" ? "bg-indigo-100 text-indigo-700" :
+                              req.status === "annullata" ? "bg-red-100 text-red-700" :
+                              "bg-gray-100 text-gray-700"
+                            }`}>
+                              {req.status.replace("_", " ")}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right text-sm">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation(); // Impedisce al click sulla riga di attivarsi
+                                setSelectedRequestForSheet(req);
+                                setIsSheetOpen(true);
+                              }}
+                            >
+                              Dettagli
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </ScrollArea>
+            </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="mx-auto h-12 w-12 mb-2" />
@@ -415,9 +432,9 @@ export default function DashboardPage() {
                  <Button 
                     variant="outline" 
                     className="text-accent border-accent hover:bg-accent/10"
-                    asChild
+                    onClick={() => router.push("/dashboard/ai/suggestions")} // Modificato per navigare alla pagina corretta
                   >
-                    <Link href="/dashboard/ai/suggestions">Vai a Suggerimenti AI</Link>
+                    Vai a Suggerimenti AI 
                   </Button>
               </>
             ) : (
@@ -431,10 +448,9 @@ export default function DashboardPage() {
                 <Button 
                   variant="outline" 
                   className="text-accent border-accent hover:bg-accent/10 w-full mt-3"
-                  asChild
+                  onClick={() => router.push("/dashboard/ai/suggestions")} // Modificato per navigare alla pagina corretta
                 >
-                  {/* In futuro, questo link potrebbe passare l'ID della richiesta: /dashboard/ai/suggestions?requestId=${selectedRequestDetailsForAI.id} */}
-                  <Link href="/dashboard/ai/suggestions">Ottieni Suggerimento AI</Link>
+                  Ottieni Suggerimento AI
                 </Button>
               </div>
             )}
@@ -452,5 +468,4 @@ export default function DashboardPage() {
     </div>
   );
 }
-
     
