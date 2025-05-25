@@ -143,28 +143,10 @@ export default function LandingPage() {
             <div>
               <h2 className="mb-4 text-3xl font-bold text-primary">A Chi è Rivolto?</h2>
               <p className="mb-4 text-muted-foreground">
-                Incastro è pensato per:
+                Incastro è la scelta ideale per tutte le attività che ricevono richieste operative da clienti, e devono organizzare interventi, tecnici o appuntamenti senza perdere tempo.
               </p>
-              <ul className="space-y-2 text-muted-foreground">
-                <li className="flex items-center">
-                  <Users className="mr-2 h-5 w-5 text-accent" />
-                  Idraulici ed elettricisti
-                </li>
-                <li className="flex items-center">
-                  <Zap className="mr-2 h-5 w-5 text-accent" />
-                  Installatori e manutentori di impianti
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="mr-2 h-5 w-5 text-accent" />
-                  Aziende multiservizi
-                </li>
-                <li className="flex items-center">
-                  <Target className="mr-2 h-5 w-5 text-accent" />
-                  Freelancer per appuntamenti e interventi.
-                </li>
-              </ul>
-              <p className="mt-4 text-muted-foreground">
-                Che tu sia da solo o in team, Incastro si adatta ai ritmi.
+              <p className="text-muted-foreground">
+                Dai manutentori agli installatori, dalle imprese multiservizi alle cooperative, se il tuo lavoro parte da una richiesta… Incastro ti semplifica la vita.
               </p>
             </div>
           </div>
