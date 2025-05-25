@@ -64,7 +64,7 @@ export default function ClientsPage() {
       const clientsQuery = query(
         collection(db, "clienti"),
         where("id_azienda", "==", currentCompanyId),
-        orderBy("data_creazione", "desc")
+        orderBy("data_creazione", "desc") // Manteniamo un ordinamento di fallback
       );
       const querySnapshot = await getDocs(clientsQuery);
       
@@ -96,7 +96,18 @@ export default function ClientsPage() {
         return clienteBase;
       });
 
-      const fetchedClients = await Promise.all(fetchedClientsPromises);
+      let fetchedClients = await Promise.all(fetchedClientsPromises);
+
+      // Ordina i clienti per richiesteAttive (decrescente), poi per nome_completo (crescente)
+      fetchedClients.sort((a, b) => {
+        const aRequests = a.richiesteAttive ?? 0;
+        const bRequests = b.richiesteAttive ?? 0;
+        if (bRequests !== aRequests) {
+          return bRequests - aRequests; // Ordine decrescente per richiesteAttive
+        }
+        return a.nome_completo.localeCompare(b.nome_completo); // Ordine crescente per nome
+      });
+
       setClients(fetchedClients);
 
     } catch (error) {
@@ -114,6 +125,7 @@ export default function ClientsPage() {
   }, [companyId, fetchClients]);
 
   const filteredClients = useMemo(() => {
+    // Il filtraggio per searchTerm avviene sull'array già ordinato
     return clients.filter(client => {
       const searchTermLower = searchTerm.toLowerCase();
       return client.nome_completo.toLowerCase().includes(searchTermLower) ||
@@ -139,7 +151,7 @@ export default function ClientsPage() {
         note_interne: data.note_interne || null,
       });
       toast({ title: "Successo!", description: "Cliente aggiornato con successo." });
-      if (companyId) fetchClients(companyId); 
+      if (companyId) fetchClients(companyId); // Ricarica i clienti per aggiornare l'ordinamento e i dati
     } catch (error) {
       console.error("Error updating client:", error);
       toast({ title: "Errore Aggiornamento", description: "Impossibile aggiornare il cliente.", variant: "destructive" });
@@ -153,7 +165,7 @@ export default function ClientsPage() {
       const clientDocRef = doc(db, "clienti", clientId);
       await deleteDoc(clientDocRef);
       toast({ title: "Successo!", description: "Cliente eliminato con successo." });
-      if (companyId) fetchClients(companyId); 
+      if (companyId) fetchClients(companyId); // Ricarica i clienti
     } catch (error) {
       console.error("Error deleting client:", error);
       toast({ title: "Errore Eliminazione", description: "Impossibile eliminare il cliente.", variant: "destructive" });
@@ -280,3 +292,6 @@ export default function ClientsPage() {
     </div>
   );
 }
+
+
+    
