@@ -241,9 +241,9 @@ export default function AiSuggestionsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Assegnazione AI dei Tecnici</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Assistenza AI</h1>
           <p className="text-muted-foreground">
-            Ottieni suggerimenti dall'AI per assegnare le richieste "in attesa" al tecnico più adatto.
+            Assegnazione intelligente dei Tecnici - Ottieni suggerimenti dall'AI per assegnare le richieste al tecnico più adatto.
           </p>
         </div>
       </div>

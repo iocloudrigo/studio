@@ -73,7 +73,7 @@ const navItems = [
     subItems: [
       { href: "/dashboard/requests", label: "Tutte le Richieste", icon: FileText },
       { href: "/dashboard/requests/new", label: "Nuova Richiesta", icon: MessageSquarePlus },
-      { href: "/dashboard/ai/suggestions", label: "Assegnazione AI", icon: Lightbulb },
+      { href: "/dashboard/ai/suggestions", label: "Assistenza AI", icon: Lightbulb }, // Modificato qui
       { href: "/dashboard/requests?statusFilter=completata,annullata", label: "Archiviate", icon: Archive },
     ]
   },
@@ -88,7 +88,7 @@ export function AppSidebar() {
   const currentPathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const { state: sidebarState, isMobile } = useSidebar();
+  const { state: sidebarState, isMobile, setOpenMobile } = useSidebar();
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
 
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
@@ -166,7 +166,7 @@ export function AppSidebar() {
         } else {
            const matchingDbCollaborator = fetchedCollaborators.find(c => c.id === currentActive.id);
            if(matchingDbCollaborator && currentActive.ruolo !== matchingDbCollaborator.ruolo){
-             setActiveCollaborator({...currentActive, ruolo: matchingDbCollaborator.ruolo });
+             setActiveCollaborator({...currentActive, ruolo: matchingDbCollaborator.ruolo, nome_completo: matchingDbCollaborator.nome_completo });
            }
         }
       }
@@ -220,7 +220,7 @@ export function AppSidebar() {
   };
 
   const handleActiveCollaboratorChange = (collaboratorId: string) => {
-    if (!setActiveCollaborator) return; 
+    if (!setActiveCollaborator || !currentUser) return; 
 
     const selected = collaborators.find(c => c.id === collaboratorId);
     if (selected) {
@@ -233,12 +233,16 @@ export function AppSidebar() {
       const currentActiveContextCollaborator = activeCollaborator;
 
       if (newActiveTarget.ruolo === "Amministratore" &&
+          currentUser.email === selected.email && // Solo l'admin principale (autenticato) può switchare al suo ruolo admin con reauth
           !(currentActiveContextCollaborator?.ruolo === "Amministratore" && currentActiveContextCollaborator?.id === newActiveTarget.id)) {
         setTargetAdminCollaboratorToSwitch(newActiveTarget);
         setIsPasswordPromptOpen(true);
       } else {
         setActiveCollaborator(newActiveTarget);
         toast({ title: "Utente Attivo Cambiato", description: `Ora stai operando come ${newActiveTarget.nome_completo}.` });
+         if (isMobile) {
+            setOpenMobile(false);
+        }
       }
     }
   };
@@ -261,6 +265,9 @@ export function AppSidebar() {
       setIsPasswordPromptOpen(false);
       setPasswordForReauth("");
       setTargetAdminCollaboratorToSwitch(null);
+      if (isMobile) {
+        setOpenMobile(false);
+      }
     } catch (error: any) {
       console.error("Errore di riautenticazione:", error);
       toast({
@@ -279,7 +286,7 @@ export function AppSidebar() {
     }
     return currentPathname;
   };
-  const fullCurrentUrl = getFullCurrentUrl();
+  const fullUrl = getFullCurrentUrl();
 
 
   return (
@@ -307,7 +314,7 @@ export function AppSidebar() {
                       className={cn(
                         "flex w-full items-center justify-between gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                         sidebarState === "collapsed" && "!size-8 !p-2",
-                        item.subItems.some(sub => fullCurrentUrl === sub.href) && "bg-sidebar-accent text-sidebar-accent-foreground"
+                        item.subItems.some(sub => fullUrl === sub.href) && "bg-sidebar-accent text-sidebar-accent-foreground"
                       )}
                       onClick={() => toggleSubmenu(item.label)}
                       title={item.label}
@@ -322,7 +329,7 @@ export function AppSidebar() {
                     {openSubmenus[item.label] && sidebarState === "expanded" && (
                       <SidebarMenuSub>
                         {item.subItems.map((subItem) => {
-                           const isActive = fullCurrentUrl === subItem.href;
+                           const isActive = fullUrl === subItem.href;
                           return (
                             <SidebarMenuSubItem key={subItem.href}>
                               <Link href={subItem.href} legacyBehavior passHref>
