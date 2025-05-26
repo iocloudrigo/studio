@@ -427,13 +427,13 @@ export default function DashboardPage() {
             {!selectedRequestDetailsForAI ? (
               <>
                 <Lightbulb className="h-12 w-12 mb-4 text-primary opacity-70" />
-                <p className="mb-3 text-center">Seleziona una richiesta "in attesa" dalla tabella sopra per vedere i dettagli qui e richiedere un suggerimento AI.</p>
+                <p className="mb-3 text-center text-sm">Seleziona una richiesta in attesa per vedere i dettagli o vai alla pagina di assegnazione.</p>
                  <Button 
                     variant="outline" 
                     className="text-accent border-accent hover:bg-accent/10"
                     onClick={() => router.push("/dashboard/ai/suggestions")} 
                   >
-                    Vai a Assegnazione AI 
+                    Assegna AI
                   </Button>
               </>
             ) : (
