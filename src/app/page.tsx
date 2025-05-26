@@ -3,7 +3,7 @@ import { LoginForm } from "@/components/auth/LoginForm";
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import Image from "next/image";
+import Image from "next/image"; // This import will become unused and can be removed by a linter later
 import { CheckCircle, Users, Zap, Target, UserPlus, Link2, ListChecks, CalendarCog, HelpCircle, ChevronRight, Euro, Star, ShieldCheck, Edit, ThumbsUp, Clock, ArrowRightCircle } from "lucide-react";
 import {
   Accordion,
@@ -104,8 +104,8 @@ export default function LandingPage() {
 
         {/* Cos'è Incastro Section */}
         <section className="py-12 md:py-20">
-          <div className="container mx-auto grid max-w-screen-lg items-center gap-8 px-4 md:grid-cols-2 md:gap-12">
-            <div className="order-2 md:order-1">
+          <div className="container mx-auto max-w-screen-lg px-4">
+            <div className="text-center md:text-left"> {/* Adjusted for single column content */}
               <h2 className="mb-4 text-3xl font-bold text-primary">Cos&apos;è Incastro?</h2>
               <p className="mb-3 text-muted-foreground">
                 Incastro è la web app che elimina il caos nella gestione degli interventi tecnici.
@@ -120,34 +120,14 @@ export default function LandingPage() {
                 Tu controlli tutto da una dashboard semplice e veloce, su desktop o smartphone.
               </p>
             </div>
-            <div className="order-1 md:order-2">
-              <Image
-                src="/images/cos-e-incastro-placeholder.webp" // Updated filename
-                alt="Illustrazione del funzionamento di Incastro"
-                width={600}
-                height={400}
-                className="rounded-lg shadow-lg"
-                data-ai-hint="software interface teamwork"
-                unoptimized={true} // Kept to bypass optimization issues in Studio
-              />
-            </div>
+            {/* Image component removed */}
           </div>
         </section>
 
         {/* A Chi è Rivolto Section */}
         <section className="py-12 md:py-20 bg-muted/50">
-          <div className="container mx-auto grid max-w-screen-lg items-center gap-8 px-4 md:grid-cols-2 md:gap-12">
-            <div>
-              <Image
-                src="https://placehold.co/600x400.png"
-                alt="Tecnici che utilizzano Incastro"
-                width={600}
-                height={400}
-                className="rounded-lg shadow-lg"
-                data-ai-hint="technician tools"
-              />
-            </div>
-            <div>
+          <div className="container mx-auto max-w-screen-lg px-4">
+            <div className="text-center md:text-left"> {/* Adjusted for single column content */}
               <h2 className="mb-4 text-3xl font-bold text-primary">A Chi è Rivolto?</h2>
               <p className="mb-4 text-muted-foreground">
                 Incastro è pensato per tutte quelle realtà che ricevono richieste operative e devono organizzare interventi sul territorio, ogni giorno.
@@ -159,6 +139,7 @@ export default function LandingPage() {
                 Se il tuo lavoro inizia da una richiesta cliente e finisce con un tecnico sul campo, Incastro è il tuo alleato operativo.
               </p>
             </div>
+             {/* Image component removed */}
           </div>
         </section>
 
@@ -216,8 +197,8 @@ export default function LandingPage() {
 
         {/* Niente più ordini inseriti a mano Section */}
         <section className="py-12 md:py-20 bg-muted/50">
-          <div className="container mx-auto grid max-w-screen-lg items-center gap-8 px-4 md:grid-cols-2 md:gap-12">
-            <div className="order-2 md:order-1">
+          <div className="container mx-auto max-w-screen-lg px-4">
+             <div className="text-center md:text-left"> {/* Adjusted for single column content */}
               <h2 className="mb-4 text-3xl font-bold text-primary">Niente più ordini inseriti a mano.</h2>
               <p className="mb-6 text-lg text-muted-foreground">
                 Con Incastro, la richiesta cliente arriva già pronta nel sistema.
@@ -238,16 +219,7 @@ export default function LandingPage() {
                 </li>
               </ul>
             </div>
-            <div className="order-1 md:order-2">
-              <Image
-                src="https://placehold.co/600x400.png" 
-                alt="Processo automatizzato Incastro"
-                width={600}
-                height={400}
-                className="rounded-lg shadow-lg"
-                data-ai-hint="automation workflow efficiency"
-              />
-            </div>
+            {/* Image component removed */}
           </div>
         </section>
 
@@ -387,5 +359,3 @@ export default function LandingPage() {
     </div>
   );
 }
-
-    
