@@ -210,7 +210,7 @@ export default function AllRequestsPage() {
         </div>
         <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
           <Link href="/dashboard/requests/new">
-            <PlusCircle className="mr-2 h-4 w-4" /> Nuova Richiesta Manuale
+            <PlusCircle className="mr-2 h-4 w-4" /> Nuova Richiesta
           </Link>
         </Button>
       </div>
