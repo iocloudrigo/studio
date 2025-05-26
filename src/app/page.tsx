@@ -3,7 +3,6 @@ import { LoginForm } from "@/components/auth/LoginForm";
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import Image from "next/image"; // This import will become unused and can be removed by a linter later
 import { CheckCircle, Users, Zap, Target, UserPlus, Link2, ListChecks, CalendarCog, HelpCircle, ChevronRight, Euro, Star, ShieldCheck, Edit, ThumbsUp, Clock, ArrowRightCircle } from "lucide-react";
 import {
   Accordion,
@@ -105,29 +104,28 @@ export default function LandingPage() {
         {/* Cos'è Incastro Section */}
         <section className="py-12 md:py-20">
           <div className="container mx-auto max-w-screen-lg px-4">
-            <div className="text-center md:text-left"> {/* Adjusted for single column content */}
-              <h2 className="mb-4 text-3xl font-bold text-primary">Cos&apos;è Incastro?</h2>
-              <p className="mb-3 text-muted-foreground">
+            <div className="text-center max-w-3xl mx-auto">
+              <h2 className="mb-6 text-3xl font-bold text-primary md:text-4xl">Cos&apos;è Incastro?</h2>
+              <p className="text-lg text-foreground/90 mb-5">
                 Incastro è la web app che elimina il caos nella gestione degli interventi tecnici.
               </p>
-              <p className="mb-3 text-muted-foreground">
+              <p className="text-lg text-foreground/90 mb-5">
                 Niente più email da copiare, telefonate perse o fogli Excel sparsi.
               </p>
-              <p className="mb-3 text-muted-foreground">
+              <p className="text-lg text-foreground/90 mb-5">
                 Le richieste arrivano dal cliente, il sistema le organizza, l’AI suggerisce chi le esegue.
               </p>
-              <p className="text-muted-foreground">
+              <p className="text-lg text-foreground/90">
                 Tu controlli tutto da una dashboard semplice e veloce, su desktop o smartphone.
               </p>
             </div>
-            {/* Image component removed */}
           </div>
         </section>
 
         {/* A Chi è Rivolto Section */}
         <section className="py-12 md:py-20 bg-muted/50">
           <div className="container mx-auto max-w-screen-lg px-4">
-            <div className="text-center md:text-left"> {/* Adjusted for single column content */}
+            <div className="text-center md:text-left">
               <h2 className="mb-4 text-3xl font-bold text-primary">A Chi è Rivolto?</h2>
               <p className="mb-4 text-muted-foreground">
                 Incastro è pensato per tutte quelle realtà che ricevono richieste operative e devono organizzare interventi sul territorio, ogni giorno.
@@ -139,7 +137,6 @@ export default function LandingPage() {
                 Se il tuo lavoro inizia da una richiesta cliente e finisce con un tecnico sul campo, Incastro è il tuo alleato operativo.
               </p>
             </div>
-             {/* Image component removed */}
           </div>
         </section>
 
@@ -198,7 +195,7 @@ export default function LandingPage() {
         {/* Niente più ordini inseriti a mano Section */}
         <section className="py-12 md:py-20 bg-muted/50">
           <div className="container mx-auto max-w-screen-lg px-4">
-             <div className="text-center md:text-left"> {/* Adjusted for single column content */}
+             <div className="text-center md:text-left">
               <h2 className="mb-4 text-3xl font-bold text-primary">Niente più ordini inseriti a mano.</h2>
               <p className="mb-6 text-lg text-muted-foreground">
                 Con Incastro, la richiesta cliente arriva già pronta nel sistema.
@@ -219,7 +216,6 @@ export default function LandingPage() {
                 </li>
               </ul>
             </div>
-            {/* Image component removed */}
           </div>
         </section>
 
