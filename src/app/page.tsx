@@ -12,6 +12,8 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
+// L'immagine verrà referenziata direttamente dalla cartella /public
+
 export default function LandingPage() {
   const faqItems = [
     {
@@ -122,7 +124,7 @@ export default function LandingPage() {
             </div>
             <div className="order-1 md:order-2">
               <Image
-                src="/images/cos-e-incastro-placeholder.png" // Percorso aggiornato
+                src="/images/cos-e-incastro-placeholder.png" // Modificato per usare il percorso pubblico
                 alt="Illustrazione del funzionamento di Incastro"
                 width={600}
                 height={400}
@@ -138,7 +140,7 @@ export default function LandingPage() {
           <div className="container mx-auto grid max-w-screen-lg items-center gap-8 px-4 md:grid-cols-2 md:gap-12">
             <div>
               <Image
-                src="https://placehold.co/600x400.png" // Ricorda di aggiornare anche questo se hai un'immagine
+                src="https://placehold.co/600x400.png"
                 alt="Tecnici che utilizzano Incastro"
                 width={600}
                 height={400}
@@ -239,7 +241,7 @@ export default function LandingPage() {
             </div>
             <div className="order-1 md:order-2">
               <Image
-                src="https://placehold.co/600x400.png" // Ricorda di aggiornare anche questo se hai un'immagine
+                src="https://placehold.co/600x400.png" 
                 alt="Processo automatizzato Incastro"
                 width={600}
                 height={400}
@@ -386,3 +388,5 @@ export default function LandingPage() {
     </div>
   );
 }
+
+    
