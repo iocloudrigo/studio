@@ -75,13 +75,13 @@ export default function DashboardPage() {
       setLoadingStats(prev => ({ ...prev, activeRequests: false }));
     }
 
-    // Fetch Assigned Requests
+    // Fetch Assigned Requests ("Richieste Assegnate")
     setLoadingStats(prev => ({ ...prev, assignedRequests: true }));
     try {
       const assignedRequestsQuery = query(
         collection(db, "richieste_clienti"),
         where("id_azienda", "==", currentCompanyId),
-        where("stato", "==", "assegnata")
+        where("stato", "==", "assegnata") 
       );
       const assignedRequestsSnap = await getCountFromServer(assignedRequestsQuery);
       setStats(prev => ({ ...prev, assignedRequests: assignedRequestsSnap.data().count }));
@@ -93,13 +93,13 @@ export default function DashboardPage() {
       setLoadingStats(prev => ({ ...prev, assignedRequests: false }));
     }
 
-    // Fetch In Progress Requests
+    // Fetch In Progress Requests ("Tecnici al lavoro")
     setLoadingStats(prev => ({ ...prev, inProgressRequests: true }));
     try {
       const inProgressRequestsQuery = query(
         collection(db, "richieste_clienti"),
         where("id_azienda", "==", currentCompanyId),
-        where("stato", "==", "in corso")
+        where("stato", "==", "in corso") 
       );
       const inProgressRequestsSnap = await getCountFromServer(inProgressRequestsQuery);
       setStats(prev => ({ ...prev, inProgressRequests: inProgressRequestsSnap.data().count }));
@@ -110,6 +110,7 @@ export default function DashboardPage() {
     } finally {
       setLoadingStats(prev => ({ ...prev, inProgressRequests: false }));
     }
+
 
     // Fetch Recent Requests (Table)
     setLoadingRequests(true);
@@ -432,7 +433,7 @@ export default function DashboardPage() {
                     className="text-accent border-accent hover:bg-accent/10"
                     onClick={() => router.push("/dashboard/ai/suggestions")} 
                   >
-                    Vai a Suggerimenti AI 
+                    Vai a Assegnazione AI 
                   </Button>
               </>
             ) : (
