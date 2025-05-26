@@ -122,8 +122,8 @@ export default function LandingPage() {
             </div>
             <div className="order-1 md:order-2">
               <Image
-                src="https://placehold.co/600x400.png"
-                alt="Illustrazione di Incastro"
+                src="/images/cos-e-incastro-placeholder.png" // Percorso aggiornato
+                alt="Illustrazione del funzionamento di Incastro"
                 width={600}
                 height={400}
                 className="rounded-lg shadow-lg"
@@ -138,8 +138,8 @@ export default function LandingPage() {
           <div className="container mx-auto grid max-w-screen-lg items-center gap-8 px-4 md:grid-cols-2 md:gap-12">
             <div>
               <Image
-                src="https://placehold.co/600x400.png"
-                alt="Tecnici al lavoro"
+                src="https://placehold.co/600x400.png" // Ricorda di aggiornare anche questo se hai un'immagine
+                alt="Tecnici che utilizzano Incastro"
                 width={600}
                 height={400}
                 className="rounded-lg shadow-lg"
@@ -206,7 +206,7 @@ export default function LandingPage() {
                 </div>
                 <h3 className="mb-2 text-xl font-semibold">4. Organizza</h3>
                 <p className="text-sm text-muted-foreground">
-                  Gestisci interventi, assegna tecnici e monitora lo stato.
+                 Gestisci interventi, assegna tecnici e monitora lo stato.
                 </p>
               </div>
             </div>
@@ -239,7 +239,7 @@ export default function LandingPage() {
             </div>
             <div className="order-1 md:order-2">
               <Image
-                src="https://placehold.co/600x400.png"
+                src="https://placehold.co/600x400.png" // Ricorda di aggiornare anche questo se hai un'immagine
                 alt="Processo automatizzato Incastro"
                 width={600}
                 height={400}
@@ -386,4 +386,3 @@ export default function LandingPage() {
     </div>
   );
 }
-
