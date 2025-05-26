@@ -126,7 +126,7 @@ export default function LandingPage() {
         <section className="py-12 md:py-20 bg-muted/50">
           <div className="container mx-auto max-w-screen-lg px-4">
             <div className="text-center max-w-3xl mx-auto">
-              <Target className="mx-auto h-12 w-12 text-primary mb-4" /> {/* Icona aggiunta */}
+              <Target className="mx-auto h-12 w-12 text-primary mb-4" />
               <h2 className="mb-6 text-3xl font-bold text-primary md:text-4xl">A Chi è Rivolto?</h2>
               <p className="text-lg text-foreground/90 mb-5">
                 Incastro è pensato per tutte quelle realtà che ricevono richieste operative e devono organizzare interventi sul territorio, ogni giorno.
@@ -358,5 +358,3 @@ export default function LandingPage() {
     </div>
   );
 }
-
-    
