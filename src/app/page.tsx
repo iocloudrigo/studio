@@ -12,8 +12,6 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-// L'immagine verrà referenziata direttamente dalla cartella /public
-
 export default function LandingPage() {
   const faqItems = [
     {
@@ -124,7 +122,7 @@ export default function LandingPage() {
             </div>
             <div className="order-1 md:order-2">
               <Image
-                src="/images/cos-e-incastro-placeholder.png" // Modificato per usare il percorso pubblico
+                src="/images/cos-e-incastro-placeholder.png" 
                 alt="Illustrazione del funzionamento di Incastro"
                 width={600}
                 height={400}
@@ -388,5 +386,3 @@ export default function LandingPage() {
     </div>
   );
 }
-
-    
