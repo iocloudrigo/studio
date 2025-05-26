@@ -141,8 +141,8 @@ export default function DashboardPage() {
           completata_da_collaboratore_id: data.completata_da_collaboratore_id,
           completata_da_collaboratore_nome: data.completata_da_collaboratore_nome,
           data_completamento: data.data_completamento as Timestamp | undefined,
-          assegnato_a_tecnico_id: data.assegnato_a_tecnico_id,
-          assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome,
+          assegnato_a_tecnico_id: data.assegnato_a_tecnico_id || "",
+          assegnato_a_tecnico_nome: data.assegnato_a_tecnico_nome || "",
         } as RecentRequest;
       });
       setRecentRequests(fetchedRequests);
@@ -453,7 +453,7 @@ export default function DashboardPage() {
                     router.push("/dashboard/ai/suggestions");
                   }}
                 >
-                  Ottieni Suggerimento AI
+                  Suggerisci
                 </Button>
               </div>
             )}
