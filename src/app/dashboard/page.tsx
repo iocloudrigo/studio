@@ -448,8 +448,6 @@ export default function DashboardPage() {
                   variant="outline" 
                   className="text-accent border-accent hover:bg-accent/10 w-full mt-3"
                   onClick={() => {
-                    setSelectedRowId(null);
-                    setSelectedRequestDetailsForAI(null);
                     router.push("/dashboard/ai/suggestions");
                   }}
                 >
