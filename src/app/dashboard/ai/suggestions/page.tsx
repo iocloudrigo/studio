@@ -243,7 +243,7 @@ export default function AiSuggestionsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Assistenza AI</h1>
           <p className="text-muted-foreground">
-            Assegnazione intelligente dei Tecnici - Ottieni suggerimenti dall'AI per assegnare le richieste al tecnico più adatto.
+            Ottieni suggerimenti per assegnare le richieste al tecnico adatto.
           </p>
         </div>
       </div>
