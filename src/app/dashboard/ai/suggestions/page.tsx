@@ -42,6 +42,9 @@ export default function AiSuggestionsPage() {
   const [techniciansWithLoad, setTechniciansWithLoad] = useState<AiTechnicianInput[]>([]);
   
   const [isLoadingPageData, setIsLoadingPageData] = useState(true);
+  // aiSuggestions: Memorizza lo stato del suggerimento AI per ogni richiesta.
+  // La chiave è l'ID della richiesta, e il valore contiene il suggerimento, lo stato di caricamento e l'errore.
+  // Un suggerimento per una richiesta rimane memorizzato qui finché non ne viene generato uno nuovo per la stessa richiesta.
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, AiSuggestionState>>({});
   const [expandedSuggestions, setExpandedSuggestions] = useState<Record<string, boolean>>({});
 
@@ -355,5 +358,3 @@ export default function AiSuggestionsPage() {
     </div>
   );
 }
-
-    
