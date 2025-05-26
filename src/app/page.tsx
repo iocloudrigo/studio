@@ -103,41 +103,37 @@ export default function LandingPage() {
 
         {/* Cos'è Incastro Section */}
         <section className="py-12 md:py-20">
-          <div className="container mx-auto max-w-screen-lg px-4">
-            <div className="text-center max-w-3xl mx-auto">
-              <h2 className="mb-6 text-3xl font-bold text-primary md:text-4xl">Cos&apos;è Incastro?</h2>
-              <p className="text-lg text-foreground/90 mb-5">
-                Incastro è la web app che elimina il caos nella gestione degli interventi tecnici.
-              </p>
-              <p className="text-lg text-foreground/90 mb-5">
-                Niente più email da copiare, telefonate perse o fogli Excel sparsi.
-              </p>
-              <p className="text-lg text-foreground/90 mb-5">
-                Le richieste arrivano dal cliente, il sistema le organizza, l’AI suggerisce chi le esegue.
-              </p>
-              <p className="text-lg text-foreground/90">
-                Tu controlli tutto da una dashboard semplice e veloce, su desktop o smartphone.
-              </p>
-            </div>
+          <div className="text-center max-w-3xl mx-auto">
+            <h2 className="mb-6 text-3xl font-bold text-primary md:text-4xl">Cos&apos;è Incastro?</h2>
+            <p className="text-lg text-foreground/90 mb-5">
+              Incastro è la web app che elimina il caos nella gestione degli interventi tecnici.
+            </p>
+            <p className="text-lg text-foreground/90 mb-5">
+              Niente più email da copiare, telefonate perse o fogli Excel sparsi.
+            </p>
+            <p className="text-lg text-foreground/90 mb-5">
+              Le richieste arrivano dal cliente, il sistema le organizza, l’AI suggerisce chi le esegue.
+            </p>
+            <p className="text-lg text-foreground/90">
+              Tu controlli tutto da una dashboard semplice e veloce, su desktop o smartphone.
+            </p>
           </div>
         </section>
 
         {/* A Chi è Rivolto Section */}
         <section className="py-12 md:py-20 bg-muted/50">
-          <div className="container mx-auto max-w-screen-lg px-4">
-            <div className="text-center max-w-3xl mx-auto">
-              <Target className="mx-auto h-12 w-12 text-primary mb-4" />
-              <h2 className="mb-6 text-3xl font-bold text-primary md:text-4xl">A Chi è Rivolto?</h2>
-              <p className="text-lg text-foreground/90 mb-5">
-                Incastro è pensato per tutte quelle realtà che ricevono richieste operative e devono organizzare interventi sul territorio, ogni giorno.
-              </p>
-              <p className="text-lg text-foreground/90 mb-5">
-                Dai piccoli team di installatori alle imprese multiservizi, fino a cooperative o ditte di assistenza tecnica.
-              </p>
-              <p className="text-lg text-foreground/90">
-                Se il tuo lavoro inizia da una richiesta cliente e finisce con un tecnico sul campo, Incastro è il tuo alleato operativo.
-              </p>
-            </div>
+          <div className="text-center max-w-3xl mx-auto">
+            <Target className="mx-auto h-12 w-12 text-primary mb-4" />
+            <h2 className="mb-6 text-3xl font-bold text-primary md:text-4xl">A Chi è Rivolto?</h2>
+            <p className="text-lg text-foreground/90 mb-5">
+              Incastro è pensato per tutte quelle realtà che ricevono richieste operative e devono organizzare interventi sul territorio, ogni giorno.
+            </p>
+            <p className="text-lg text-foreground/90 mb-5">
+              Dai piccoli team di installatori alle imprese multiservizi, fino a cooperative o ditte di assistenza tecnica.
+            </p>
+            <p className="text-lg text-foreground/90">
+              Se il tuo lavoro inizia da una richiesta cliente e finisce con un tecnico sul campo, Incastro è il tuo alleato operativo.
+            </p>
           </div>
         </section>
 
@@ -195,30 +191,28 @@ export default function LandingPage() {
 
         {/* Niente più ordini inseriti a mano Section */}
         <section className="py-12 md:py-20 bg-muted/50">
-          <div className="container mx-auto max-w-screen-lg px-4">
-             <div className="text-center max-w-3xl mx-auto"> {/* Centered text block */}
-              <h2 className="mb-6 text-3xl font-bold text-primary md:text-4xl">Niente più ordini inseriti a mano.</h2>
-              <p className="mb-5 text-lg text-foreground/90">
-                Con Incastro, la richiesta cliente arriva già pronta nel sistema.
-              </p>
-              <p className="mb-5 text-lg text-foreground/90">
-                Zero trascrizioni. Zero errori. Zero perdite di tempo.
-              </p>
-              <ul className="space-y-3 text-lg text-foreground/80 text-left md:text-center"> {/* List for better readability */}
-                <li className="flex items-center justify-center md:justify-start">
-                  <ArrowRightCircle className="mr-3 mt-1 h-5 w-5 flex-shrink-0 text-accent" />
-                  <span>Il cliente compila il form → la richiesta viene creata in automatico</span>
-                </li>
-                <li className="flex items-center justify-center md:justify-start">
-                  <ArrowRightCircle className="mr-3 mt-1 h-5 w-5 flex-shrink-0 text-accent" />
-                  <span>L’azienda la trova subito in dashboard, già assegnabile</span>
-                </li>
-                <li className="flex items-center justify-center md:justify-start">
-                  <ArrowRightCircle className="mr-3 mt-1 h-5 w-5 flex-shrink-0 text-accent" />
-                  <span>Addio inserimenti manuali, call perse o email dimenticate</span>
-                </li>
-              </ul>
-            </div>
+           <div className="max-w-3xl mx-auto">
+            <h2 className="text-center mb-6 text-3xl font-bold text-primary md:text-4xl">Niente più ordini inseriti a mano.</h2>
+            <p className="text-center mb-5 text-lg text-foreground/90">
+              Con Incastro, la richiesta cliente arriva già pronta nel sistema.
+            </p>
+            <p className="text-center mb-5 text-lg text-foreground/90">
+              Zero trascrizioni. Zero errori. Zero perdite di tempo.
+            </p>
+            <ul className="space-y-3 text-lg text-foreground/80 text-left w-fit mx-auto">
+              <li className="flex items-center">
+                <ArrowRightCircle className="mr-3 mt-1 h-5 w-5 flex-shrink-0 text-accent" />
+                <span>Il cliente compila il form → la richiesta viene creata in automatico</span>
+              </li>
+              <li className="flex items-center">
+                <ArrowRightCircle className="mr-3 mt-1 h-5 w-5 flex-shrink-0 text-accent" />
+                <span>L’azienda la trova subito in dashboard, già assegnabile</span>
+              </li>
+              <li className="flex items-center">
+                <ArrowRightCircle className="mr-3 mt-1 h-5 w-5 flex-shrink-0 text-accent" />
+                <span>Addio inserimenti manuali, call perse o email dimenticate</span>
+              </li>
+            </ul>
           </div>
         </section>
 
