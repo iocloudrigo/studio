@@ -106,7 +106,7 @@ export default function LandingPage() {
         <section className="py-12 md:py-20">
           <div className="container mx-auto grid max-w-screen-lg items-center gap-8 px-4 md:grid-cols-2 md:gap-12">
             <div className="order-2 md:order-1">
-              <h2 className="mb-4 text-3xl font-bold text-primary">Cos'è Incastro?</h2>
+              <h2 className="mb-4 text-3xl font-bold text-primary">Cos&apos;è Incastro?</h2>
               <p className="mb-3 text-muted-foreground">
                 Incastro è la web app che elimina il caos nella gestione degli interventi tecnici.
               </p>
@@ -122,12 +122,13 @@ export default function LandingPage() {
             </div>
             <div className="order-1 md:order-2">
               <Image
-                src="/images/cos-e-incastro-placeholder.png" 
+                src="/images/cos-e-incastro-placeholder.webp" // Updated filename
                 alt="Illustrazione del funzionamento di Incastro"
                 width={600}
                 height={400}
                 className="rounded-lg shadow-lg"
                 data-ai-hint="software interface teamwork"
+                unoptimized={true} // Kept to bypass optimization issues in Studio
               />
             </div>
           </div>
@@ -386,3 +387,5 @@ export default function LandingPage() {
     </div>
   );
 }
+
+    
