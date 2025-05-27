@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Building, UserCircle, Bell, ShieldCheck, CreditCard, Loader2, LinkIcon, Users, PlusCircle, Mail, BriefcaseIcon, Edit, KeyRound, LogOut } from "lucide-react";
+import { Building, UserCircle, Bell, CreditCard, Loader2, LinkIcon, Users, PlusCircle, Mail, BriefcaseIcon, Edit, KeyRound, LogOut, CalendarCheck2 } from "lucide-react";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { auth, db, storage } from "@/lib/firebase";
 import { onAuthStateChanged, updateProfile, type User as FirebaseUser, updateEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
@@ -34,17 +34,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CollaboratorDetailsSheet, type CollaboratorEditFormValues } from "@/components/dashboard/settings/CollaboratorDetailsSheet";
-import { 
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { useActiveCollaborator } from '@/app/dashboard/layout'; 
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+
 
 const companyFormSchema = z.object({
   nome: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
@@ -129,6 +121,9 @@ export default function SettingsPage() {
   const { activeCollaborator, isLoadingActiveCollaborator } = useActiveCollaborator();
   const [activeCollaboratorRole, setActiveCollaboratorRole] = useState<string | null>(null);
   
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
   const companyForm = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
     defaultValues: {
@@ -147,7 +142,7 @@ export default function SettingsPage() {
       displayName: "",
       email: "",
       newPassword: "",
-      confirmNewPassword: "",
+      confirmNewPassword: ""
     },
   });
 
@@ -161,12 +156,15 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
-    if (activeCollaborator) {
-      setActiveCollaboratorRole(activeCollaborator.ruolo);
-    } else {
-      setActiveCollaboratorRole(null);
+    if (!isLoadingActiveCollaborator && activeCollaborator) {
+        setActiveCollaboratorRole(activeCollaborator.ruolo);
+    } else if (!isLoadingActiveCollaborator && !activeCollaborator) {
+        // Se non c'è un collaboratore attivo (es. al primo caricamento o dopo un logout), 
+        // il ruolo dovrebbe essere resettato o gestito di conseguenza.
+        setActiveCollaboratorRole(null);
     }
-  }, [activeCollaborator]);
+  }, [activeCollaborator, isLoadingActiveCollaborator]);
+
 
   const fetchCollaborators = useCallback(async (currentCompanyId: string) => {
     if (!currentCompanyId) return;
@@ -286,7 +284,7 @@ export default function SettingsPage() {
     });
 
     return () => unsubscribe();
-  }, [companyForm, profileForm, toast, fetchCollaborators, companyId]);
+  }, [companyForm, profileForm, toast, fetchCollaborators, companyId]); // companyId aggiunto per sicurezza
 
   const companyNameValue = companyForm.watch("nome");
   const companySlugValue = companyForm.watch("slug");
@@ -300,6 +298,59 @@ export default function SettingsPage() {
       }
     }
   }, [companyNameValue, companyForm, isSlugManuallyEditedCompany]);
+
+  const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0] && currentUser) {
+      const file = event.target.files[0];
+      // Basic file validation (optional, ma consigliato)
+      if (file.size > 5 * 1024 * 1024) { // Max 5MB
+        toast({ title: "Errore Caricamento", description: "Il file è troppo grande (max 5MB).", variant: "destructive" });
+        return;
+      }
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
+        toast({ title: "Errore Caricamento", description: "Formato file non supportato.", variant: "destructive" });
+        return;
+      }
+
+      setIsUploadingLogo(true);
+      const logoPath = `logos/${currentUser.uid}/${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, logoPath);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          // Progress (opzionale)
+          // const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          // console.log('Upload is ' + progress + '% done');
+        },
+        (error) => {
+          console.error("Errore upload logo:", error);
+          let description = "Impossibile caricare il logo. Riprova.";
+          if (error.code === 'storage/unauthorized') {
+            description = "Non hai i permessi per caricare questo file. Controlla le regole di Firebase Storage.";
+          } else if (error.code === 'storage/canceled') {
+            description = "Caricamento annullato.";
+          }
+          toast({ title: "Errore Upload Logo", description, variant: "destructive" });
+          setIsUploadingLogo(false);
+        },
+        async () => {
+          try {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            companyForm.setValue("logoUrl", downloadURL, { shouldValidate: true });
+            // Non è necessario aggiornare companyData qui, l'Avatar usa companyLogoUrlValue che è watchato dal form
+            toast({ title: "Successo", description: "Logo caricato! Salva le modifiche per applicarlo." });
+          } catch (getUrlError) {
+            console.error("Errore ottenimento URL download logo:", getUrlError);
+            toast({ title: "Errore Upload Logo", description: "Impossibile ottenere l'URL del logo caricato.", variant: "destructive" });
+          } finally {
+            setIsUploadingLogo(false);
+          }
+        }
+      );
+    }
+  };
 
 
   async function onSubmitCompany(data: CompanyFormValues) {
@@ -396,6 +447,7 @@ export default function SettingsPage() {
     
     setIsSavingProfile(true);
     let profileUpdated = false;
+    const oldEmail = currentUser.email; // Salva la vecchia email prima di tentare di cambiarla
 
     try {
       if (data.displayName !== currentUser.displayName) {
@@ -432,7 +484,7 @@ export default function SettingsPage() {
         try {
           await updatePassword(currentUser, data.newPassword);
           profileUpdated = true;
-          profileForm.reset({ ...data, newPassword: "", confirmNewPassword: "" });
+          profileForm.reset({ ...data, newPassword: "", confirmNewPassword: "" }); // Pulisci i campi password
         } catch (passwordError: any) {
           console.error("Errore aggiornamento password Firebase Auth:", passwordError);
           let desc = `Impossibile aggiornare la password: ${passwordError.message}`;
@@ -444,45 +496,53 @@ export default function SettingsPage() {
         }
       }
 
-      const currentAuthUserAfterPossibleUpdates = auth.currentUser; 
+      // Sincronizzazione del record dell'amministratore nella collezione collaboratori_azienda
+      const currentAuthUserAfterPossibleUpdates = auth.currentUser; // Rileggi l'utente auth per avere i dati più recenti
       if (currentAuthUserAfterPossibleUpdates) {
-        const adminEmailForQuery = currentAuthUserAfterPossibleUpdates.email || "";
-        const adminDisplayNameForUpdate = currentAuthUserAfterPossibleUpdates.displayName || data.displayName;
+          const adminEmailForQuery = currentAuthUserAfterPossibleUpdates.email || "";
+          const adminDisplayNameForUpdate = currentAuthUserAfterPossibleUpdates.displayName || data.displayName;
+          const adminCompanyId = currentAuthUserAfterPossibleUpdates.uid;
 
-        const adminCollaboratorsRef = collection(db, "collaboratori_azienda");
-        const oldEmail = currentUser.email; 
-        let adminCollabDocRef;
+          const collaboratorsRef = collection(db, "collaboratori_azienda");
+          // Cerca il collaboratore amministratore usando la vecchia email, se l'email è cambiata
+          const emailToSearch = (oldEmail !== adminEmailForQuery) ? oldEmail : adminEmailForQuery;
+          const qAdmin = query(collaboratorsRef, where("id_azienda", "==", adminCompanyId), where("email", "==", emailToSearch));
+          
+          const adminCollabSnapshot = await getDocs(qAdmin);
 
-        const qOld = query(adminCollaboratorsRef, where("id_azienda", "==", currentUser.uid), where("email", "==", oldEmail));
-        const oldAdminCollabSnapshot = await getDocs(qOld);
-
-        if (!oldAdminCollabSnapshot.empty) {
-          adminCollabDocRef = oldAdminCollabSnapshot.docs[0].ref;
-          await updateDoc(adminCollabDocRef, { 
-            nome_completo: adminDisplayNameForUpdate,
-            email: adminEmailForQuery, 
-            ruolo: "Amministratore" 
-          });
-        } else {
-          const qNew = query(adminCollaboratorsRef, where("id_azienda", "==", currentUser.uid), where("email", "==", adminEmailForQuery));
-          const newAdminCollabSnapshot = await getDocs(qNew);
-          if (newAdminCollabSnapshot.empty) {
-            await addDoc(adminCollaboratorsRef, {
-              id_azienda: currentUser.uid,
-              nome_completo: adminDisplayNameForUpdate,
-              email: adminEmailForQuery,
-              ruolo: "Amministratore",
-              data_creazione: serverTimestamp(),
-            });
+          if (!adminCollabSnapshot.empty) {
+              const adminCollabDocRef = adminCollabSnapshot.docs[0].ref;
+              await updateDoc(adminCollabDocRef, { 
+                  nome_completo: adminDisplayNameForUpdate,
+                  email: adminEmailForQuery, // Aggiorna con la nuova email
+                  ruolo: "Amministratore" // Assicura che il ruolo sia corretto
+              });
+              console.log("Record collaboratore amministratore aggiornato.");
           } else {
-            adminCollabDocRef = newAdminCollabSnapshot.docs[0].ref;
-             await updateDoc(adminCollabDocRef, { 
-                nome_completo: adminDisplayNameForUpdate,
-                ruolo: "Amministratore" 
-            });
+              // Se non trovato con la vecchia email (e l'email è cambiata), potrebbe non esistere o la query era sbagliata
+              // Prova a cercarlo con la nuova email o crealo se necessario
+              const qNewEmailAdmin = query(collaboratorsRef, where("id_azienda", "==", adminCompanyId), where("email", "==", adminEmailForQuery));
+              const newEmailAdminSnapshot = await getDocs(qNewEmailAdmin);
+              if (newEmailAdminSnapshot.empty) {
+                 await addDoc(collaboratorsRef, {
+                    id_azienda: adminCompanyId,
+                    nome_completo: adminDisplayNameForUpdate,
+                    email: adminEmailForQuery,
+                    ruolo: "Amministratore",
+                    data_creazione: serverTimestamp(),
+                  });
+                  console.log("Record collaboratore amministratore creato (non trovato con vecchia/nuova email).");
+              } else {
+                  // Già esiste con la nuova email, aggiorna solo nome e ruolo
+                  const newEmailAdminDocRef = newEmailAdminSnapshot.docs[0].ref;
+                  await updateDoc(newEmailAdminDocRef, {
+                      nome_completo: adminDisplayNameForUpdate,
+                      ruolo: "Amministratore"
+                  });
+                   console.log("Record collaboratore amministratore aggiornato (trovato con nuova email).");
+              }
           }
-        }
-        if (companyId) fetchCollaborators(companyId);
+          if (companyId) fetchCollaborators(companyId); // Ricarica la lista dei collaboratori
       }
 
 
@@ -560,7 +620,7 @@ export default function SettingsPage() {
       const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
       await updateDoc(collaboratorDocRef, data); 
       toast({ title: "Successo!", description: "Collaboratore aggiornato."});
-      fetchCollaborators(companyId);
+      if (companyId) fetchCollaborators(companyId);
     } catch (error: any) {
       console.error("Errore aggiornamento collaboratore:", error);
       if (error.message !== "Email già in uso" && error.message !== "Cannot change primary admin email here.") {
@@ -583,7 +643,7 @@ export default function SettingsPage() {
       const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
       await deleteDoc(collaboratorDocRef);
       toast({ title: "Successo!", description: "Collaboratore eliminato."});
-      fetchCollaborators(companyId);
+      if (companyId) fetchCollaborators(companyId);
     } catch (error: any) {
       console.error("Errore eliminazione collaboratore:", error);
       toast({ title: "Errore Eliminazione", description: error.message || "Impossibile eliminare il collaboratore.", variant: "destructive" });
@@ -609,11 +669,11 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="company" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6"> {/* Modificato grid-cols-5 in grid-cols-4 */}
+        <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 mb-6"> 
           <TabsTrigger value="company"><Building className="mr-2 h-4 w-4 hidden sm:inline-block"/>Azienda</TabsTrigger>
           <TabsTrigger value="profile"><UserCircle className="mr-2 h-4 w-4 hidden sm:inline-block"/>Profilo & Utenti</TabsTrigger>
-          <TabsTrigger value="notifications" disabled><Bell className="mr-2 h-4 w-4 hidden sm:inline-block"/>Notifiche</TabsTrigger>
-          {/* <TabsTrigger value="security" disabled><ShieldCheck className="mr-2 h-4 w-4 hidden sm:inline-block"/>Sicurezza</TabsTrigger> */} {/* Rimosso/Commentato */}
+          <TabsTrigger value="integrations"><CalendarCheck2 className="mr-2 h-4 w-4 hidden sm:inline-block" />Integrazioni</TabsTrigger>
+          <TabsTrigger value="notifications" disabled><Bell className="mr-2 h-4 w-4 hidden sm:inline-block"/>Avvisi</TabsTrigger>
           <TabsTrigger value="billing" disabled><CreditCard className="mr-2 h-4 w-4 hidden sm:inline-block"/>Fatturazione</TabsTrigger>
         </TabsList>
 
@@ -638,13 +698,24 @@ export default function SettingsPage() {
                      <Button 
                         variant="outline" 
                         type="button" 
-                        disabled
+                        disabled // Mantenuto disabilitato come da richiesta precedente
                         onClick={() => {
+                          // Se la funzionalità di upload logo è stata rimandata:
                           toast({title: "Info", description: "Funzionalità di caricamento logo (Prossimamente)."})
+                          // Altrimenti, se vuoi riattivarla ma l'utente ha scelto di non farlo:
+                          // logoFileInputRef.current?.click(); 
                         }}
                     >
-                        Cambia Logo (Prossimamente) 
+                        {isUploadingLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        {isUploadingLogo ? "Caricamento..." : "Cambia Logo (Prossimamente)"}
                     </Button>
+                    <input 
+                        type="file" 
+                        ref={logoFileInputRef} 
+                        onChange={handleLogoFileChange} 
+                        className="hidden" 
+                        accept="image/png, image/jpeg, image/webp, image/gif" 
+                    />
                   </div>
                   <Separator />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -971,6 +1042,45 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="integrations">
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>Integrazioni</CardTitle>
+              <CardDescription>Collega Incastro con altri servizi per automatizzare il tuo lavoro.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center text-xl">
+                    <CalendarCheck2 className="mr-3 h-6 w-6 text-blue-500" />
+                    Google Calendar
+                  </CardTitle>
+                  <CardDescription>
+                    Sincronizza automaticamente gli appuntamenti programmati in Incastro con il tuo Google Calendar.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Stato: Non collegato
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      toast({ title: "Info", description: "Funzionalità di integrazione con Google Calendar (Prossimamente)." })
+                    }}
+                    className="border-blue-500 text-blue-500 hover:bg-blue-500/10"
+                    disabled // Lasciamo disabilitato finché non è pronta la logica OAuth
+                  >
+                     <CalendarCheck2 className="mr-2 h-4 w-4" />
+                    Collega Google Calendar (Prossimamente)
+                  </Button>
+                </CardContent>
+              </Card>
+              {/* Qui potresti aggiungere altre card per future integrazioni */}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="notifications">
           <Card className="shadow-lg">
             <CardHeader>
@@ -981,22 +1091,6 @@ export default function SettingsPage() {
               <Bell className="h-12 w-12 mb-2" />
               <p>Funzionalità di notifica in arrivo.</p>
               <p className="text-sm">Potrai personalizzare le preferenze per email e notifiche in-app.</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="security"> {/* Il contenuto rimane anche se la scheda è nascosta */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle>Sicurezza Account</CardTitle>
-              <CardDescription>Modifica la password e gestisci le opzioni di sicurezza.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 text-center h-48 flex flex-col justify-center items-center text-muted-foreground">
-              <ShieldCheck className="h-12 w-12 mb-2" />
-              <p>Opzioni di sicurezza avanzate in arrivo.</p>
-               <Button variant="outline" className="mt-4" type="button" onClick={() => toast({title: "Info", description: "Funzionalità cambio password (Prossimamente). Per ora, usa il form nel profilo."})}>
-                Cambia Password (Prossimamente)
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1028,3 +1122,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+
