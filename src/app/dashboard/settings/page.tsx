@@ -81,6 +81,8 @@ import {
 import { useActiveCollaborator } from '@/app/dashboard/layout';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
+import { connectGoogleCalendar } from '@/lib/googleCalendar/googleAuth';
+
 const companyFormSchema = z.object({
   nome: z.string().min(2, {
     message: "Il nome dell'azienda deve contenere almeno 2 caratteri.",
@@ -198,6 +200,9 @@ export default function SettingsPage() {
 
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+  const [isGoogleConnected, setIsGoogleConnected] = useState(false); // londort
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null); // londort
 
   const companyForm = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
@@ -361,6 +366,14 @@ export default function SettingsPage() {
             setCompanyData(loadedCompanyData);
             companyForm.reset(loadedCompanyData);
             if (data.slug) setIsSlugManuallyEditedCompany(true);
+
+            // londort ->
+            const googleAuthData = data.google_auth || {};
+            setIsGoogleConnected(
+              googleAuthData.google_calendar_connected || false
+            );
+            setGoogleEmail(googleAuthData.google_email || null);
+            // <- londort
 
             await ensureAdminCollaboratorExists(user);
             fetchCollaborators(user.uid);
@@ -1555,23 +1568,42 @@ export default function SettingsPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground mb-3">
+                  {/* <p className="text-sm text-muted-foreground mb-3">
                     Stato: Non collegato
+                  </p> */}
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Stato:{' '}
+                    {isGoogleConnected ? (
+                      <span className="text-green-600 font-medium">
+                        Collegato {googleEmail ? `(${googleEmail})` : ''}
+                      </span>
+                    ) : (
+                      <span className="text-red-500">Non collegato</span>
+                    )}
                   </p>
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      toast({
-                        title: 'Info',
-                        description:
-                          'Funzionalità di integrazione con Google Calendar (Prossimamente).',
-                      });
+                    onClick={async () => {
+                      const result = await connectGoogleCalendar();
+                      if (result.success) {
+                        setIsGoogleConnected(true);
+                        setGoogleEmail(result.email || null);
+                        toast({
+                          title: 'Successo!',
+                          description: `Google Calendar collegato con ${result.email}`,
+                        });
+                      } else {
+                        toast({
+                          title: 'Errore Google Calendar',
+                          description: result.error || 'Collegamento fallito.',
+                          variant: 'destructive',
+                        });
+                      }
                     }}
                     className="border-blue-500 text-blue-500 hover:bg-blue-500/10"
-                    disabled // Lasciamo disabilitato finché non è pronta la logica OAuth
                   >
                     <CalendarCheck2 className="mr-2 h-4 w-4" />
-                    Collega Google Calendar (Prossimamente)
+                    Collega Google Calendar
                   </Button>
                 </CardContent>
               </Card>
