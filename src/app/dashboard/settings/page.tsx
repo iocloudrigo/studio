@@ -1,22 +1,63 @@
+'use client';
 
-"use client";
-
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Building, UserCircle, Bell, CreditCard, Loader2, LinkIcon, Users, PlusCircle, Mail, BriefcaseIcon, Edit, KeyRound, LogOut, CalendarCheck2 } from "lucide-react";
-import { useEffect, useState, useCallback, useRef } from "react";
-import { auth, db, storage } from "@/lib/firebase";
-import { onAuthStateChanged, updateProfile, type User as FirebaseUser, updateEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { doc, getDoc, setDoc, query, where, collection, getDocs, addDoc, serverTimestamp, orderBy, updateDoc, deleteDoc } from "firebase/firestore";
-import { useToast } from "@/hooks/use-toast";
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  Building,
+  UserCircle,
+  Bell,
+  CreditCard,
+  Loader2,
+  LinkIcon,
+  Users,
+  PlusCircle,
+  Mail,
+  BriefcaseIcon,
+  Edit,
+  KeyRound,
+  LogOut,
+  CalendarCheck2,
+} from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { auth, db, storage } from '@/lib/firebase';
+import {
+  onAuthStateChanged,
+  updateProfile,
+  type User as FirebaseUser,
+  updateEmail,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+} from 'firebase/auth';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  query,
+  where,
+  collection,
+  getDocs,
+  addDoc,
+  serverTimestamp,
+  orderBy,
+  updateDoc,
+  deleteDoc,
+} from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 import {
   Form,
   FormControl,
@@ -25,71 +66,101 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
+} from '@/components/ui/form';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { CollaboratorDetailsSheet, type CollaboratorEditFormValues } from "@/components/dashboard/settings/CollaboratorDetailsSheet";
-import { useActiveCollaborator } from '@/app/dashboard/layout'; 
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+} from '@/components/ui/select';
+import {
+  CollaboratorDetailsSheet,
+  type CollaboratorEditFormValues,
+} from '@/components/dashboard/settings/CollaboratorDetailsSheet';
+import { useActiveCollaborator } from '@/app/dashboard/layout';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
+import { connectGoogleCalendar } from '@/lib/googleCalendar/googleAuth';
 
 const companyFormSchema = z.object({
-  nome: z.string().min(2, { message: "Il nome dell'azienda deve contenere almeno 2 caratteri." }),
-  email_contatto: z.string().email({ message: "Indirizzo email non valido." }).optional().or(z.literal("")),
+  nome: z.string().min(2, {
+    message: "Il nome dell'azienda deve contenere almeno 2 caratteri.",
+  }),
+  email_contatto: z
+    .string()
+    .email({ message: 'Indirizzo email non valido.' })
+    .optional()
+    .or(z.literal('')),
   telefono_contatto: z.string().optional(),
   indirizzo_completo: z.string().optional(),
-  slug: z.string()
-    .min(1, { message: "Lo slug è richiesto." })
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: "Slug non valido. Usa solo lettere minuscole, numeri e trattini singoli." })
-    .refine(s => !s.startsWith('-') && !s.endsWith('-'), { message: "Lo slug non può iniziare o finire con un trattino." }),
-  logoUrl: z.string().url({message: "URL logo non valido"}).optional().or(z.literal("")),
+  slug: z
+    .string()
+    .min(1, { message: 'Lo slug è richiesto.' })
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
+      message:
+        'Slug non valido. Usa solo lettere minuscole, numeri e trattini singoli.',
+    })
+    .refine((s) => !s.startsWith('-') && !s.endsWith('-'), {
+      message: 'Lo slug non può iniziare o finire con un trattino.',
+    }),
+  logoUrl: z
+    .string()
+    .url({ message: 'URL logo non valido' })
+    .optional()
+    .or(z.literal('')),
 });
 type CompanyFormValues = z.infer<typeof companyFormSchema>;
 
-const profileFormSchema = z.object({
-  displayName: z.string().min(2, { message: "Il nome deve contenere almeno 2 caratteri." }),
-  email: z.string().email({ message: "Indirizzo email non valido." }),
-  newPassword: z.string().optional(),
-  confirmNewPassword: z.string().optional(),
-}).refine(data => {
-  if (data.newPassword && !data.confirmNewPassword) {
-    return false; 
-  }
-  if (data.newPassword && data.newPassword !== data.confirmNewPassword) {
-    return false; 
-  }
-  if (data.newPassword && data.newPassword.length < 6) {
-    return false; 
-  }
-  return true;
-}, {
-  message: "Le password non coincidono o la nuova password è troppo corta (min. 6 caratteri).",
-  path: ["confirmNewPassword"], 
-});
+const profileFormSchema = z
+  .object({
+    displayName: z
+      .string()
+      .min(2, { message: 'Il nome deve contenere almeno 2 caratteri.' }),
+    email: z.string().email({ message: 'Indirizzo email non valido.' }),
+    newPassword: z.string().optional(),
+    confirmNewPassword: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.newPassword && !data.confirmNewPassword) {
+        return false;
+      }
+      if (data.newPassword && data.newPassword !== data.confirmNewPassword) {
+        return false;
+      }
+      if (data.newPassword && data.newPassword.length < 6) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message:
+        'Le password non coincidono o la nuova password è troppo corta (min. 6 caratteri).',
+      path: ['confirmNewPassword'],
+    }
+  );
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
 const collaboratorFormSchema = z.object({
-  nome_completo: z.string().min(2, { message: "Il nome completo è richiesto."}),
-  email: z.string().email({ message: "Indirizzo email non valido."}),
-  ruolo: z.string().min(1, { message: "Il ruolo è richiesto."}),
+  nome_completo: z
+    .string()
+    .min(2, { message: 'Il nome completo è richiesto.' }),
+  email: z.string().email({ message: 'Indirizzo email non valido.' }),
+  ruolo: z.string().min(1, { message: 'Il ruolo è richiesto.' }),
 });
-export type CollaboratorFormValues = z.infer<typeof collaboratorFormSchema>; 
+export type CollaboratorFormValues = z.infer<typeof collaboratorFormSchema>;
 
-export interface Collaborator { 
+export interface Collaborator {
   id: string;
   nome_completo: string;
   email: string;
   ruolo: string;
-  id_azienda: string; 
+  id_azienda: string;
 }
 
 const generateSlug = (name: string): string => {
-  if (!name) return "";
+  if (!name) return '';
   return name
     .toLowerCase()
     .trim()
@@ -98,103 +169,129 @@ const generateSlug = (name: string): string => {
     .replace(/--+/g, '-');
 };
 
-const RUOLI_COLLABORATORI = ["Amministratore", "Operatore", "Responsabile"];
-
+const RUOLI_COLLABORATORI = ['Amministratore', 'Operatore', 'Responsabile'];
 
 export default function SettingsPage() {
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
-  const [companyData, setCompanyData] = useState<Partial<CompanyFormValues & { email_admin?: string; sede_citta?: string }>>({});
+  const [companyData, setCompanyData] = useState<
+    Partial<CompanyFormValues & { email_admin?: string; sede_citta?: string }>
+  >({});
   const [loadingData, setLoadingData] = useState(true);
   const [isSavingCompany, setIsSavingCompany] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [isSlugManuallyEditedCompany, setIsSlugManuallyEditedCompany] = useState(false);
-  
+  const [isSlugManuallyEditedCompany, setIsSlugManuallyEditedCompany] =
+    useState(false);
+
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(false);
   const [isAddingCollaborator, setIsAddingCollaborator] = useState(false);
 
-  const [selectedCollaboratorForSheet, setSelectedCollaboratorForSheet] = useState<Collaborator | null>(null);
+  const [selectedCollaboratorForSheet, setSelectedCollaboratorForSheet] =
+    useState<Collaborator | null>(null);
   const [isCollaboratorSheetOpen, setIsCollaboratorSheetOpen] = useState(false);
 
-  const { activeCollaborator, isLoadingActiveCollaborator } = useActiveCollaborator();
-  const [activeCollaboratorRole, setActiveCollaboratorRole] = useState<string | null>(null);
-  
+  const { activeCollaborator, isLoadingActiveCollaborator } =
+    useActiveCollaborator();
+  const [activeCollaboratorRole, setActiveCollaboratorRole] = useState<
+    string | null
+  >(null);
+
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+  const [isGoogleConnected, setIsGoogleConnected] = useState(false); // londort
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null); // londort
 
   const companyForm = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
     defaultValues: {
-      nome: "",
-      email_contatto: "",
-      telefono_contatto: "",
-      indirizzo_completo: "",
-      slug: "",
-      logoUrl: "",
+      nome: '',
+      email_contatto: '',
+      telefono_contatto: '',
+      indirizzo_completo: '',
+      slug: '',
+      logoUrl: '',
     },
   });
 
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
-      displayName: "",
-      email: "",
-      newPassword: "",
-      confirmNewPassword: ""
+      displayName: '',
+      email: '',
+      newPassword: '',
+      confirmNewPassword: '',
     },
   });
 
   const collaboratorForm = useForm<CollaboratorFormValues>({
     resolver: zodResolver(collaboratorFormSchema),
     defaultValues: {
-      nome_completo: "",
-      email: "",
-      ruolo: "",
+      nome_completo: '',
+      email: '',
+      ruolo: '',
     },
   });
 
   useEffect(() => {
     if (!isLoadingActiveCollaborator && activeCollaborator) {
-        setActiveCollaboratorRole(activeCollaborator.ruolo);
+      setActiveCollaboratorRole(activeCollaborator.ruolo);
     } else if (!isLoadingActiveCollaborator && !activeCollaborator) {
-        // Se non c'è un collaboratore attivo (es. al primo caricamento o dopo un logout), 
-        // il ruolo dovrebbe essere resettato o gestito di conseguenza.
-        setActiveCollaboratorRole(null);
+      // Se non c'è un collaboratore attivo (es. al primo caricamento o dopo un logout),
+      // il ruolo dovrebbe essere resettato o gestito di conseguenza.
+      setActiveCollaboratorRole(null);
     }
   }, [activeCollaborator, isLoadingActiveCollaborator]);
 
-
-  const fetchCollaborators = useCallback(async (currentCompanyId: string) => {
-    if (!currentCompanyId) return;
-    setIsLoadingCollaborators(true);
-    try {
-      const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", currentCompanyId), orderBy("data_creazione", "desc"));
-      const querySnapshot = await getDocs(q);
-      const fetchedCollaborators = querySnapshot.docs.map(docSnap => ({
-        id: docSnap.id,
-        ...docSnap.data()
-      } as Collaborator));
-      setCollaborators(fetchedCollaborators);
-    } catch (error) {
-      console.error("Errore nel caricare i collaboratori:", error);
-      toast({ title: "Errore Caricamento Collaboratori", description: "Impossibile caricare l'elenco dei collaboratori.", variant: "destructive" });
-    } finally {
-      setIsLoadingCollaborators(false);
-    }
-  }, [toast]);
+  const fetchCollaborators = useCallback(
+    async (currentCompanyId: string) => {
+      if (!currentCompanyId) return;
+      setIsLoadingCollaborators(true);
+      try {
+        const q = query(
+          collection(db, 'collaboratori_azienda'),
+          where('id_azienda', '==', currentCompanyId),
+          orderBy('data_creazione', 'desc')
+        );
+        const querySnapshot = await getDocs(q);
+        const fetchedCollaborators = querySnapshot.docs.map(
+          (docSnap) =>
+            ({
+              id: docSnap.id,
+              ...docSnap.data(),
+            } as Collaborator)
+        );
+        setCollaborators(fetchedCollaborators);
+      } catch (error) {
+        console.error('Errore nel caricare i collaboratori:', error);
+        toast({
+          title: 'Errore Caricamento Collaboratori',
+          description: "Impossibile caricare l'elenco dei collaboratori.",
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoadingCollaborators(false);
+      }
+    },
+    [toast]
+  );
 
   const ensureAdminCollaboratorExists = async (user: FirebaseUser) => {
     if (!user || !user.uid || !user.email) return;
 
     const adminEmail = user.email;
-    const adminName = user.displayName || "Amministratore";
+    const adminName = user.displayName || 'Amministratore';
     const adminCompanyId = user.uid;
 
-    const collaboratorsRef = collection(db, "collaboratori_azienda");
-    const q = query(collaboratorsRef, where("id_azienda", "==", adminCompanyId), where("email", "==", adminEmail));
-    
+    const collaboratorsRef = collection(db, 'collaboratori_azienda');
+    const q = query(
+      collaboratorsRef,
+      where('id_azienda', '==', adminCompanyId),
+      where('email', '==', adminEmail)
+    );
+
     try {
       const querySnapshot = await getDocs(q);
       if (querySnapshot.empty) {
@@ -202,11 +299,11 @@ export default function SettingsPage() {
           id_azienda: adminCompanyId,
           nome_completo: adminName,
           email: adminEmail,
-          ruolo: "Amministratore", 
+          ruolo: 'Amministratore',
           data_creazione: serverTimestamp(),
         };
         await addDoc(collaboratorsRef, adminCollaboratorData);
-        console.log("Collaboratore amministratore creato:", adminEmail);
+        console.log('Collaboratore amministratore creato:', adminEmail);
         if (companyId) fetchCollaborators(companyId);
       } else {
         const adminCollabDoc = querySnapshot.docs[0];
@@ -216,65 +313,85 @@ export default function SettingsPage() {
           updates.nome_completo = adminName;
           needsUpdate = true;
         }
-        if (adminCollabDoc.data().ruolo !== "Amministratore") { 
-          updates.ruolo = "Amministratore";
+        if (adminCollabDoc.data().ruolo !== 'Amministratore') {
+          updates.ruolo = 'Amministratore';
           needsUpdate = true;
         }
         if (needsUpdate) {
           await updateDoc(adminCollabDoc.ref, updates);
-          console.log("Dettagli collaboratore amministratore aggiornati.");
+          console.log('Dettagli collaboratore amministratore aggiornati.');
           if (companyId) fetchCollaborators(companyId);
         }
       }
     } catch (error) {
-      console.error("Errore durante la verifica/creazione del collaboratore amministratore:", error);
-      toast({ title: "Errore Sincronizzazione Admin", description: "Impossibile sincronizzare l'amministratore come collaboratore.", variant: "destructive" });
+      console.error(
+        'Errore durante la verifica/creazione del collaboratore amministratore:',
+        error
+      );
+      toast({
+        title: 'Errore Sincronizzazione Admin',
+        description:
+          "Impossibile sincronizzare l'amministratore come collaboratore.",
+        variant: 'destructive',
+      });
     }
   };
-
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
         setCompanyId(user.uid);
-        profileForm.reset({ 
-          displayName: user.displayName || "",
-          email: user.email || "",
-          newPassword: "",
-          confirmNewPassword: ""
+        profileForm.reset({
+          displayName: user.displayName || '',
+          email: user.email || '',
+          newPassword: '',
+          confirmNewPassword: '',
         });
 
         try {
-          const companyDocRef = doc(db, "aziende", user.uid);
+          const companyDocRef = doc(db, 'aziende', user.uid);
           const companyDocSnap = await getDoc(companyDocRef);
           if (companyDocSnap.exists()) {
             const data = companyDocSnap.data();
             const loadedCompanyData = {
-              nome: data.nome || "",
-              email_contatto: data.email_contatto || data.email_admin || "",
-              telefono_contatto: data.telefono_contatto || "",
-              indirizzo_completo: data.indirizzo_completo || data.sede_citta || "",
-              slug: data.slug || "",
-              logoUrl: data.logoUrl || "",
+              nome: data.nome || '',
+              email_contatto: data.email_contatto || data.email_admin || '',
+              telefono_contatto: data.telefono_contatto || '',
+              indirizzo_completo:
+                data.indirizzo_completo || data.sede_citta || '',
+              slug: data.slug || '',
+              logoUrl: data.logoUrl || '',
             };
             setCompanyData(loadedCompanyData);
             companyForm.reset(loadedCompanyData);
             if (data.slug) setIsSlugManuallyEditedCompany(true);
-            
+
+            // londort ->
+            const googleAuthData = data.google_auth || {};
+            setIsGoogleConnected(
+              googleAuthData.google_calendar_connected || false
+            );
+            setGoogleEmail(googleAuthData.google_email || null);
+            // <- londort
+
             await ensureAdminCollaboratorExists(user);
-            fetchCollaborators(user.uid); 
+            fetchCollaborators(user.uid);
           } else {
-             companyForm.reset({
-                logoUrl: "",
-                nome: "",
-                email_contatto: user.email || "",
-                slug: generateSlug(user.displayName || "mia-azienda"),
-             });
+            companyForm.reset({
+              logoUrl: '',
+              nome: '',
+              email_contatto: user.email || '',
+              slug: generateSlug(user.displayName || 'mia-azienda'),
+            });
           }
         } catch (error) {
           console.error("Errore nel caricare i dati dell'azienda:", error);
-          toast({ title: "Errore Dati Azienda", description: "Impossibile caricare i dati dell'azienda.", variant: "destructive" });
+          toast({
+            title: 'Errore Dati Azienda',
+            description: "Impossibile caricare i dati dell'azienda.",
+            variant: 'destructive',
+          });
         }
       } else {
         setCurrentUser(null);
@@ -286,29 +403,48 @@ export default function SettingsPage() {
     return () => unsubscribe();
   }, [companyForm, profileForm, toast, fetchCollaborators, companyId]); // companyId aggiunto per sicurezza
 
-  const companyNameValue = companyForm.watch("nome");
-  const companySlugValue = companyForm.watch("slug");
-  const companyLogoUrlValue = companyForm.watch("logoUrl");
+  const companyNameValue = companyForm.watch('nome');
+  const companySlugValue = companyForm.watch('slug');
+  const companyLogoUrlValue = companyForm.watch('logoUrl');
 
   useEffect(() => {
-    if (!isSlugManuallyEditedCompany && companyNameValue && !companyForm.formState.dirtyFields.slug) {
+    if (
+      !isSlugManuallyEditedCompany &&
+      companyNameValue &&
+      !companyForm.formState.dirtyFields.slug
+    ) {
       const newSlug = generateSlug(companyNameValue);
-      if (companyForm.getValues("slug") !== newSlug) {
-        companyForm.setValue("slug", newSlug, { shouldValidate: true });
+      if (companyForm.getValues('slug') !== newSlug) {
+        companyForm.setValue('slug', newSlug, { shouldValidate: true });
       }
     }
   }, [companyNameValue, companyForm, isSlugManuallyEditedCompany]);
 
-  const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     if (event.target.files && event.target.files[0] && currentUser) {
       const file = event.target.files[0];
       // Basic file validation (optional, ma consigliato)
-      if (file.size > 5 * 1024 * 1024) { // Max 5MB
-        toast({ title: "Errore Caricamento", description: "Il file è troppo grande (max 5MB).", variant: "destructive" });
+      if (file.size > 5 * 1024 * 1024) {
+        // Max 5MB
+        toast({
+          title: 'Errore Caricamento',
+          description: 'Il file è troppo grande (max 5MB).',
+          variant: 'destructive',
+        });
         return;
       }
-      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
-        toast({ title: "Errore Caricamento", description: "Formato file non supportato.", variant: "destructive" });
+      if (
+        !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(
+          file.type
+        )
+      ) {
+        toast({
+          title: 'Errore Caricamento',
+          description: 'Formato file non supportato.',
+          variant: 'destructive',
+        });
         return;
       }
 
@@ -318,32 +454,46 @@ export default function SettingsPage() {
       const uploadTask = uploadBytesResumable(storageRef, file);
 
       uploadTask.on(
-        "state_changed",
+        'state_changed',
         (snapshot) => {
           // Progress (opzionale)
           // const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           // console.log('Upload is ' + progress + '% done');
         },
         (error) => {
-          console.error("Errore upload logo:", error);
-          let description = "Impossibile caricare il logo. Riprova.";
+          console.error('Errore upload logo:', error);
+          let description = 'Impossibile caricare il logo. Riprova.';
           if (error.code === 'storage/unauthorized') {
-            description = "Non hai i permessi per caricare questo file. Controlla le regole di Firebase Storage.";
+            description =
+              'Non hai i permessi per caricare questo file. Controlla le regole di Firebase Storage.';
           } else if (error.code === 'storage/canceled') {
-            description = "Caricamento annullato.";
+            description = 'Caricamento annullato.';
           }
-          toast({ title: "Errore Upload Logo", description, variant: "destructive" });
+          toast({
+            title: 'Errore Upload Logo',
+            description,
+            variant: 'destructive',
+          });
           setIsUploadingLogo(false);
         },
         async () => {
           try {
             const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            companyForm.setValue("logoUrl", downloadURL, { shouldValidate: true });
+            companyForm.setValue('logoUrl', downloadURL, {
+              shouldValidate: true,
+            });
             // Non è necessario aggiornare companyData qui, l'Avatar usa companyLogoUrlValue che è watchato dal form
-            toast({ title: "Successo", description: "Logo caricato! Salva le modifiche per applicarlo." });
+            toast({
+              title: 'Successo',
+              description: 'Logo caricato! Salva le modifiche per applicarlo.',
+            });
           } catch (getUrlError) {
-            console.error("Errore ottenimento URL download logo:", getUrlError);
-            toast({ title: "Errore Upload Logo", description: "Impossibile ottenere l'URL del logo caricato.", variant: "destructive" });
+            console.error('Errore ottenimento URL download logo:', getUrlError);
+            toast({
+              title: 'Errore Upload Logo',
+              description: "Impossibile ottenere l'URL del logo caricato.",
+              variant: 'destructive',
+            });
           } finally {
             setIsUploadingLogo(false);
           }
@@ -352,47 +502,67 @@ export default function SettingsPage() {
     }
   };
 
-
   async function onSubmitCompany(data: CompanyFormValues) {
     if (!currentUser) {
-      toast({ title: "Errore", description: "Utente non autenticato.", variant: "destructive" });
+      toast({
+        title: 'Errore',
+        description: 'Utente non autenticato.',
+        variant: 'destructive',
+      });
       return;
     }
     setIsSavingCompany(true);
     try {
-      const companyDocRef = doc(db, "aziende", currentUser.uid);
+      const companyDocRef = doc(db, 'aziende', currentUser.uid);
       const currentCompanyDataSnap = await getDoc(companyDocRef);
-      const currentSlug = currentCompanyDataSnap.exists() ? currentCompanyDataSnap.data().slug : null;
+      const currentSlug = currentCompanyDataSnap.exists()
+        ? currentCompanyDataSnap.data().slug
+        : null;
       const isNewCompany = !currentCompanyDataSnap.exists();
 
       let finalSlug = data.slug;
-      if (data.slug.trim() === "") {
-        finalSlug = generateSlug(data.nome) || `azienda-${currentUser.uid.substring(0,6)}`;
+      if (data.slug.trim() === '') {
+        finalSlug =
+          generateSlug(data.nome) ||
+          `azienda-${currentUser.uid.substring(0, 6)}`;
       } else {
         finalSlug = generateSlug(data.slug);
       }
-      
-      const validatedData = companyFormSchema.parse({...data, slug: finalSlug});
+
+      const validatedData = companyFormSchema.parse({
+        ...data,
+        slug: finalSlug,
+      });
 
       if (validatedData.slug !== currentSlug) {
-        const slugQuery = query(collection(db, "aziende"), where("slug", "==", validatedData.slug));
+        const slugQuery = query(
+          collection(db, 'aziende'),
+          where('slug', '==', validatedData.slug)
+        );
         const slugQuerySnapshot = await getDocs(slugQuery);
         if (!slugQuerySnapshot.empty) {
           let slugTaken = false;
-          slugQuerySnapshot.forEach(docSnap => {
+          slugQuerySnapshot.forEach((docSnap) => {
             if (docSnap.id !== currentUser.uid) {
               slugTaken = true;
             }
           });
           if (slugTaken) {
-            companyForm.setError("slug", { type: "manual", message: "Questo slug è già utilizzato. Scegline uno diverso." });
-            toast({ title: "Errore Salvataggio", description: "Lo slug inserito è già in uso.", variant: "destructive" });
+            companyForm.setError('slug', {
+              type: 'manual',
+              message: 'Questo slug è già utilizzato. Scegline uno diverso.',
+            });
+            toast({
+              title: 'Errore Salvataggio',
+              description: 'Lo slug inserito è già in uso.',
+              variant: 'destructive',
+            });
             setIsSavingCompany(false);
             return;
           }
         }
       }
-      
+
       const dataToUpdate = {
         nome: validatedData.nome,
         email_contatto: validatedData.email_contatto || null,
@@ -400,29 +570,40 @@ export default function SettingsPage() {
         indirizzo_completo: validatedData.indirizzo_completo || null,
         slug: validatedData.slug,
         logoUrl: validatedData.logoUrl || null,
-        email_admin: currentUser.email, 
+        email_admin: currentUser.email,
         uid_admin: currentUser.uid,
       };
 
       await setDoc(companyDocRef, dataToUpdate, { merge: true });
-      
-      if (isNewCompany) { 
+
+      if (isNewCompany) {
         await ensureAdminCollaboratorExists(currentUser);
       }
 
-      setCompanyData(prev => ({...prev, ...dataToUpdate}));
-      companyForm.reset(dataToUpdate); 
-      setIsSlugManuallyEditedCompany(true); 
-      toast({ title: "Successo!", description: "Dati aziendali aggiornati." });
+      setCompanyData((prev) => ({ ...prev, ...dataToUpdate }));
+      companyForm.reset(dataToUpdate);
+      setIsSlugManuallyEditedCompany(true);
+      toast({ title: 'Successo!', description: 'Dati aziendali aggiornati.' });
     } catch (error: any) {
-      console.error("Errore salvataggio dati azienda:", error);
+      console.error('Errore salvataggio dati azienda:', error);
       if (error instanceof z.ZodError) {
-        error.errors.forEach(err => {
-          companyForm.setError(err.path[0] as keyof CompanyFormValues, { message: err.message });
+        error.errors.forEach((err) => {
+          companyForm.setError(err.path[0] as keyof CompanyFormValues, {
+            message: err.message,
+          });
         });
-        toast({ title: "Errore di Validazione", description: "Controlla i campi evidenziati.", variant: "destructive" });
+        toast({
+          title: 'Errore di Validazione',
+          description: 'Controlla i campi evidenziati.',
+          variant: 'destructive',
+        });
       } else {
-        toast({ title: "Errore Salvataggio", description: error.message || "Impossibile salvare i dati dell'azienda.", variant: "destructive" });
+        toast({
+          title: 'Errore Salvataggio',
+          description:
+            error.message || "Impossibile salvare i dati dell'azienda.",
+          variant: 'destructive',
+        });
       }
     } finally {
       setIsSavingCompany(false);
@@ -431,20 +612,25 @@ export default function SettingsPage() {
 
   async function onSubmitProfile(data: ProfileFormValues) {
     if (!currentUser || !companyId) {
-      toast({ title: "Errore", description: "Utente non autenticato o ID azienda mancante.", variant: "destructive" });
+      toast({
+        title: 'Errore',
+        description: 'Utente non autenticato o ID azienda mancante.',
+        variant: 'destructive',
+      });
       return;
     }
-    
-    if (activeCollaboratorRole !== "Amministratore") {
+
+    if (activeCollaboratorRole !== 'Amministratore') {
       toast({
-        title: "Azione Non Permessa",
-        description: "Devi operare come 'Amministratore' per modificare i dettagli del profilo principale.",
-        variant: "destructive"
+        title: 'Azione Non Permessa',
+        description:
+          "Devi operare come 'Amministratore' per modificare i dettagli del profilo principale.",
+        variant: 'destructive',
       });
       setIsSavingProfile(false);
       return;
     }
-    
+
     setIsSavingProfile(true);
     let profileUpdated = false;
     const oldEmail = currentUser.email; // Salva la vecchia email prima di tentare di cambiarla
@@ -458,39 +644,69 @@ export default function SettingsPage() {
       if (data.email !== currentUser.email) {
         try {
           await updateEmail(currentUser, data.email);
-          const companyDocRef = doc(db, "aziende", currentUser.uid);
+          const companyDocRef = doc(db, 'aziende', currentUser.uid);
           await updateDoc(companyDocRef, { email_admin: data.email });
           profileUpdated = true;
         } catch (emailError: any) {
-          console.error("Errore aggiornamento email Firebase Auth:", emailError);
+          console.error(
+            'Errore aggiornamento email Firebase Auth:',
+            emailError
+          );
           let desc = `Impossibile aggiornare l'email: ${emailError.message}`;
-          if (emailError.code === 'auth/requires-recent-login') desc = "Per modificare l'email, è necessario un login recente. Prova a fare logout e login.";
-          else if (emailError.code === 'auth/email-already-in-use') desc = "L'indirizzo email è già in uso da un altro account.";
-          toast({ title: "Errore Email", description: desc, variant: "destructive" });
+          if (emailError.code === 'auth/requires-recent-login')
+            desc =
+              "Per modificare l'email, è necessario un login recente. Prova a fare logout e login.";
+          else if (emailError.code === 'auth/email-already-in-use')
+            desc = "L'indirizzo email è già in uso da un altro account.";
+          toast({
+            title: 'Errore Email',
+            description: desc,
+            variant: 'destructive',
+          });
           setIsSavingProfile(false);
-          return; 
+          return;
         }
       }
 
       if (data.newPassword) {
         if (data.newPassword.length < 6) {
-          profileForm.setError("newPassword", { message: "La password deve contenere almeno 6 caratteri." });
-          setIsSavingProfile(false); return;
+          profileForm.setError('newPassword', {
+            message: 'La password deve contenere almeno 6 caratteri.',
+          });
+          setIsSavingProfile(false);
+          return;
         }
         if (data.newPassword !== data.confirmNewPassword) {
-          profileForm.setError("confirmNewPassword", { message: "Le password non coincidono." });
-          setIsSavingProfile(false); return;
+          profileForm.setError('confirmNewPassword', {
+            message: 'Le password non coincidono.',
+          });
+          setIsSavingProfile(false);
+          return;
         }
         try {
           await updatePassword(currentUser, data.newPassword);
           profileUpdated = true;
-          profileForm.reset({ ...data, newPassword: "", confirmNewPassword: "" }); // Pulisci i campi password
+          profileForm.reset({
+            ...data,
+            newPassword: '',
+            confirmNewPassword: '',
+          }); // Pulisci i campi password
         } catch (passwordError: any) {
-          console.error("Errore aggiornamento password Firebase Auth:", passwordError);
+          console.error(
+            'Errore aggiornamento password Firebase Auth:',
+            passwordError
+          );
           let desc = `Impossibile aggiornare la password: ${passwordError.message}`;
-          if (passwordError.code === 'auth/requires-recent-login') desc = "Per modificare la password, è necessario un login recente. Prova a fare logout e login.";
-          else if (passwordError.code === 'auth/weak-password') desc = "La password è troppo debole.";
-          toast({ title: "Errore Password", description: desc, variant: "destructive" });
+          if (passwordError.code === 'auth/requires-recent-login')
+            desc =
+              'Per modificare la password, è necessario un login recente. Prova a fare logout e login.';
+          else if (passwordError.code === 'auth/weak-password')
+            desc = 'La password è troppo debole.';
+          toast({
+            title: 'Errore Password',
+            description: desc,
+            variant: 'destructive',
+          });
           setIsSavingProfile(false);
           return;
         }
@@ -499,62 +715,82 @@ export default function SettingsPage() {
       // Sincronizzazione del record dell'amministratore nella collezione collaboratori_azienda
       const currentAuthUserAfterPossibleUpdates = auth.currentUser; // Rileggi l'utente auth per avere i dati più recenti
       if (currentAuthUserAfterPossibleUpdates) {
-          const adminEmailForQuery = currentAuthUserAfterPossibleUpdates.email || "";
-          const adminDisplayNameForUpdate = currentAuthUserAfterPossibleUpdates.displayName || data.displayName;
-          const adminCompanyId = currentAuthUserAfterPossibleUpdates.uid;
+        const adminEmailForQuery =
+          currentAuthUserAfterPossibleUpdates.email || '';
+        const adminDisplayNameForUpdate =
+          currentAuthUserAfterPossibleUpdates.displayName || data.displayName;
+        const adminCompanyId = currentAuthUserAfterPossibleUpdates.uid;
 
-          const collaboratorsRef = collection(db, "collaboratori_azienda");
-          // Cerca il collaboratore amministratore usando la vecchia email, se l'email è cambiata
-          const emailToSearch = (oldEmail !== adminEmailForQuery) ? oldEmail : adminEmailForQuery;
-          const qAdmin = query(collaboratorsRef, where("id_azienda", "==", adminCompanyId), where("email", "==", emailToSearch));
-          
-          const adminCollabSnapshot = await getDocs(qAdmin);
+        const collaboratorsRef = collection(db, 'collaboratori_azienda');
+        // Cerca il collaboratore amministratore usando la vecchia email, se l'email è cambiata
+        const emailToSearch =
+          oldEmail !== adminEmailForQuery ? oldEmail : adminEmailForQuery;
+        const qAdmin = query(
+          collaboratorsRef,
+          where('id_azienda', '==', adminCompanyId),
+          where('email', '==', emailToSearch)
+        );
 
-          if (!adminCollabSnapshot.empty) {
-              const adminCollabDocRef = adminCollabSnapshot.docs[0].ref;
-              await updateDoc(adminCollabDocRef, { 
-                  nome_completo: adminDisplayNameForUpdate,
-                  email: adminEmailForQuery, // Aggiorna con la nuova email
-                  ruolo: "Amministratore" // Assicura che il ruolo sia corretto
-              });
-              console.log("Record collaboratore amministratore aggiornato.");
+        const adminCollabSnapshot = await getDocs(qAdmin);
+
+        if (!adminCollabSnapshot.empty) {
+          const adminCollabDocRef = adminCollabSnapshot.docs[0].ref;
+          await updateDoc(adminCollabDocRef, {
+            nome_completo: adminDisplayNameForUpdate,
+            email: adminEmailForQuery, // Aggiorna con la nuova email
+            ruolo: 'Amministratore', // Assicura che il ruolo sia corretto
+          });
+          console.log('Record collaboratore amministratore aggiornato.');
+        } else {
+          // Se non trovato con la vecchia email (e l'email è cambiata), potrebbe non esistere o la query era sbagliata
+          // Prova a cercarlo con la nuova email o crealo se necessario
+          const qNewEmailAdmin = query(
+            collaboratorsRef,
+            where('id_azienda', '==', adminCompanyId),
+            where('email', '==', adminEmailForQuery)
+          );
+          const newEmailAdminSnapshot = await getDocs(qNewEmailAdmin);
+          if (newEmailAdminSnapshot.empty) {
+            await addDoc(collaboratorsRef, {
+              id_azienda: adminCompanyId,
+              nome_completo: adminDisplayNameForUpdate,
+              email: adminEmailForQuery,
+              ruolo: 'Amministratore',
+              data_creazione: serverTimestamp(),
+            });
+            console.log(
+              'Record collaboratore amministratore creato (non trovato con vecchia/nuova email).'
+            );
           } else {
-              // Se non trovato con la vecchia email (e l'email è cambiata), potrebbe non esistere o la query era sbagliata
-              // Prova a cercarlo con la nuova email o crealo se necessario
-              const qNewEmailAdmin = query(collaboratorsRef, where("id_azienda", "==", adminCompanyId), where("email", "==", adminEmailForQuery));
-              const newEmailAdminSnapshot = await getDocs(qNewEmailAdmin);
-              if (newEmailAdminSnapshot.empty) {
-                 await addDoc(collaboratorsRef, {
-                    id_azienda: adminCompanyId,
-                    nome_completo: adminDisplayNameForUpdate,
-                    email: adminEmailForQuery,
-                    ruolo: "Amministratore",
-                    data_creazione: serverTimestamp(),
-                  });
-                  console.log("Record collaboratore amministratore creato (non trovato con vecchia/nuova email).");
-              } else {
-                  // Già esiste con la nuova email, aggiorna solo nome e ruolo
-                  const newEmailAdminDocRef = newEmailAdminSnapshot.docs[0].ref;
-                  await updateDoc(newEmailAdminDocRef, {
-                      nome_completo: adminDisplayNameForUpdate,
-                      ruolo: "Amministratore"
-                  });
-                   console.log("Record collaboratore amministratore aggiornato (trovato con nuova email).");
-              }
+            // Già esiste con la nuova email, aggiorna solo nome e ruolo
+            const newEmailAdminDocRef = newEmailAdminSnapshot.docs[0].ref;
+            await updateDoc(newEmailAdminDocRef, {
+              nome_completo: adminDisplayNameForUpdate,
+              ruolo: 'Amministratore',
+            });
+            console.log(
+              'Record collaboratore amministratore aggiornato (trovato con nuova email).'
+            );
           }
-          if (companyId) fetchCollaborators(companyId); // Ricarica la lista dei collaboratori
+        }
+        if (companyId) fetchCollaborators(companyId); // Ricarica la lista dei collaboratori
       }
-
 
       if (profileUpdated) {
-        toast({ title: "Successo!", description: "Profilo aggiornato." });
+        toast({ title: 'Successo!', description: 'Profilo aggiornato.' });
       } else {
-        toast({ title: "Info", description: "Nessuna modifica rilevata nel profilo." });
+        toast({
+          title: 'Info',
+          description: 'Nessuna modifica rilevata nel profilo.',
+        });
       }
-
     } catch (error: any) {
-      console.error("Errore aggiornamento profilo:", error);
-      toast({ title: "Errore Aggiornamento", description: error.message || "Impossibile aggiornare il profilo.", variant: "destructive" });
+      console.error('Errore aggiornamento profilo:', error);
+      toast({
+        title: 'Errore Aggiornamento',
+        description: error.message || 'Impossibile aggiornare il profilo.',
+        variant: 'destructive',
+      });
     } finally {
       setIsSavingProfile(false);
     }
@@ -562,16 +798,31 @@ export default function SettingsPage() {
 
   async function onAddCollaborator(data: CollaboratorFormValues) {
     if (!companyId) {
-      toast({ title: "Errore", description: "ID Azienda non trovato.", variant: "destructive" });
+      toast({
+        title: 'Errore',
+        description: 'ID Azienda non trovato.',
+        variant: 'destructive',
+      });
       return;
     }
     setIsAddingCollaborator(true);
     try {
-      const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", companyId), where("email", "==", data.email));
+      const q = query(
+        collection(db, 'collaboratori_azienda'),
+        where('id_azienda', '==', companyId),
+        where('email', '==', data.email)
+      );
       const emailCheckSnapshot = await getDocs(q);
       if (!emailCheckSnapshot.empty) {
-        collaboratorForm.setError("email", { type: "manual", message: "Questa email è già in uso per un collaboratore." });
-        toast({ title: "Errore", description: "Email già utilizzata per un collaboratore.", variant: "destructive" });
+        collaboratorForm.setError('email', {
+          type: 'manual',
+          message: 'Questa email è già in uso per un collaboratore.',
+        });
+        toast({
+          title: 'Errore',
+          description: 'Email già utilizzata per un collaboratore.',
+          variant: 'destructive',
+        });
         setIsAddingCollaborator(false);
         return;
       }
@@ -581,13 +832,21 @@ export default function SettingsPage() {
         id_azienda: companyId,
         data_creazione: serverTimestamp(),
       };
-      await addDoc(collection(db, "collaboratori_azienda"), collaboratorData);
-      toast({ title: "Successo!", description: "Nuovo collaboratore aggiunto." });
+      await addDoc(collection(db, 'collaboratori_azienda'), collaboratorData);
+      toast({
+        title: 'Successo!',
+        description: 'Nuovo collaboratore aggiunto.',
+      });
       collaboratorForm.reset();
-      if (companyId) fetchCollaborators(companyId); 
+      if (companyId) fetchCollaborators(companyId);
     } catch (error: any) {
-      console.error("Errore aggiunta collaboratore:", error);
-      toast({ title: "Errore Aggiunta", description: error.message || "Impossibile aggiungere il collaboratore.", variant: "destructive" });
+      console.error('Errore aggiunta collaboratore:', error);
+      toast({
+        title: 'Errore Aggiunta',
+        description:
+          error.message || 'Impossibile aggiungere il collaboratore.',
+        variant: 'destructive',
+      });
     } finally {
       setIsAddingCollaborator(false);
     }
@@ -598,60 +857,114 @@ export default function SettingsPage() {
     setIsCollaboratorSheetOpen(true);
   };
 
-  const handleUpdateCollaborator = async (collaboratorId: string, data: CollaboratorEditFormValues) => {
+  const handleUpdateCollaborator = async (
+    collaboratorId: string,
+    data: CollaboratorEditFormValues
+  ) => {
     if (!companyId || !currentUser) return;
 
-    const collaboratorToUpdate = collaborators.find(c => c.id === collaboratorId);
-    if (collaboratorToUpdate?.email === currentUser.email && data.email !== currentUser.email && collaboratorToUpdate.ruolo === "Amministratore") {
-        toast({title: "Azione non permessa", description: "L'email del profilo Amministratore principale deve essere modificata tramite il form 'Profilo Utente Amministratore'.", variant: "destructive"});
-        throw new Error("Cannot change primary admin email here.");
+    const collaboratorToUpdate = collaborators.find(
+      (c) => c.id === collaboratorId
+    );
+    if (
+      collaboratorToUpdate?.email === currentUser.email &&
+      data.email !== currentUser.email &&
+      collaboratorToUpdate.ruolo === 'Amministratore'
+    ) {
+      toast({
+        title: 'Azione non permessa',
+        description:
+          "L'email del profilo Amministratore principale deve essere modificata tramite il form 'Profilo Utente Amministratore'.",
+        variant: 'destructive',
+      });
+      throw new Error('Cannot change primary admin email here.');
     }
-    
+
     if (data.email !== collaboratorToUpdate?.email) {
-      const q = query(collection(db, "collaboratori_azienda"), where("id_azienda", "==", companyId), where("email", "==", data.email));
+      const q = query(
+        collection(db, 'collaboratori_azienda'),
+        where('id_azienda', '==', companyId),
+        where('email', '==', data.email)
+      );
       const emailCheckSnapshot = await getDocs(q);
-      if (!emailCheckSnapshot.empty && emailCheckSnapshot.docs.some(d => d.id !== collaboratorId)) {
-        toast({ title: "Errore", description: "Questa email è già in uso da un altro collaboratore.", variant: "destructive" });
-        throw new Error("Email già in uso");
+      if (
+        !emailCheckSnapshot.empty &&
+        emailCheckSnapshot.docs.some((d) => d.id !== collaboratorId)
+      ) {
+        toast({
+          title: 'Errore',
+          description: 'Questa email è già in uso da un altro collaboratore.',
+          variant: 'destructive',
+        });
+        throw new Error('Email già in uso');
       }
     }
 
     try {
-      const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
-      await updateDoc(collaboratorDocRef, data); 
-      toast({ title: "Successo!", description: "Collaboratore aggiornato."});
+      const collaboratorDocRef = doc(
+        db,
+        'collaboratori_azienda',
+        collaboratorId
+      );
+      await updateDoc(collaboratorDocRef, data);
+      toast({ title: 'Successo!', description: 'Collaboratore aggiornato.' });
       if (companyId) fetchCollaborators(companyId);
     } catch (error: any) {
-      console.error("Errore aggiornamento collaboratore:", error);
-      if (error.message !== "Email già in uso" && error.message !== "Cannot change primary admin email here.") {
-        toast({ title: "Errore Aggiornamento", description: error.message || "Impossibile aggiornare il collaboratore.", variant: "destructive" });
+      console.error('Errore aggiornamento collaboratore:', error);
+      if (
+        error.message !== 'Email già in uso' &&
+        error.message !== 'Cannot change primary admin email here.'
+      ) {
+        toast({
+          title: 'Errore Aggiornamento',
+          description:
+            error.message || 'Impossibile aggiornare il collaboratore.',
+          variant: 'destructive',
+        });
       }
-      throw error; 
+      throw error;
     }
   };
-  
+
   const handleDeleteCollaborator = async (collaboratorId: string) => {
     if (!companyId || !currentUser) return;
-    
-    const collaboratorToDelete = collaborators.find(c => c.id === collaboratorId);
-    if (collaboratorToDelete?.email === currentUser.email && collaboratorToDelete?.ruolo === "Amministratore") {
-      toast({ title: "Azione non permessa", description: "L'amministratore principale non può essere eliminato.", variant: "destructive"});
+
+    const collaboratorToDelete = collaborators.find(
+      (c) => c.id === collaboratorId
+    );
+    if (
+      collaboratorToDelete?.email === currentUser.email &&
+      collaboratorToDelete?.ruolo === 'Amministratore'
+    ) {
+      toast({
+        title: 'Azione non permessa',
+        description: "L'amministratore principale non può essere eliminato.",
+        variant: 'destructive',
+      });
       return;
     }
 
     try {
-      const collaboratorDocRef = doc(db, "collaboratori_azienda", collaboratorId);
+      const collaboratorDocRef = doc(
+        db,
+        'collaboratori_azienda',
+        collaboratorId
+      );
       await deleteDoc(collaboratorDocRef);
-      toast({ title: "Successo!", description: "Collaboratore eliminato."});
+      toast({ title: 'Successo!', description: 'Collaboratore eliminato.' });
       if (companyId) fetchCollaborators(companyId);
     } catch (error: any) {
-      console.error("Errore eliminazione collaboratore:", error);
-      toast({ title: "Errore Eliminazione", description: error.message || "Impossibile eliminare il collaboratore.", variant: "destructive" });
-      throw error; 
+      console.error('Errore eliminazione collaboratore:', error);
+      toast({
+        title: 'Errore Eliminazione',
+        description: error.message || 'Impossibile eliminare il collaboratore.',
+        variant: 'destructive',
+      });
+      throw error;
     }
   };
 
-  const canEditAdminProfile = activeCollaboratorRole === "Amministratore";
+  const canEditAdminProfile = activeCollaboratorRole === 'Amministratore';
 
   if (loadingData || isLoadingActiveCollaborator) {
     return (
@@ -664,57 +977,97 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Impostazioni</h1>
-        <p className="text-muted-foreground">Gestisci le informazioni della tua azienda e le preferenze dell'account.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">
+          Impostazioni
+        </h1>
+        <p className="text-muted-foreground">
+          Gestisci le informazioni della tua azienda e le preferenze
+          dell'account.
+        </p>
       </div>
 
       <Tabs defaultValue="company" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 mb-6"> 
-          <TabsTrigger value="company"><Building className="mr-2 h-4 w-4 hidden sm:inline-block"/>Azienda</TabsTrigger>
-          <TabsTrigger value="profile"><UserCircle className="mr-2 h-4 w-4 hidden sm:inline-block"/>Profilo & Utenti</TabsTrigger>
-          <TabsTrigger value="integrations"><CalendarCheck2 className="mr-2 h-4 w-4 hidden sm:inline-block" />Integrazioni</TabsTrigger>
-          <TabsTrigger value="notifications" disabled><Bell className="mr-2 h-4 w-4 hidden sm:inline-block"/>Avvisi</TabsTrigger>
-          <TabsTrigger value="billing" disabled><CreditCard className="mr-2 h-4 w-4 hidden sm:inline-block"/>Fatturazione</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 mb-6">
+          <TabsTrigger value="company">
+            <Building className="mr-2 h-4 w-4 hidden sm:inline-block" />
+            Azienda
+          </TabsTrigger>
+          <TabsTrigger value="profile">
+            <UserCircle className="mr-2 h-4 w-4 hidden sm:inline-block" />
+            Profilo & Utenti
+          </TabsTrigger>
+          <TabsTrigger value="integrations">
+            <CalendarCheck2 className="mr-2 h-4 w-4 hidden sm:inline-block" />
+            Integrazioni
+          </TabsTrigger>
+          <TabsTrigger value="notifications" disabled>
+            <Bell className="mr-2 h-4 w-4 hidden sm:inline-block" />
+            Avvisi
+          </TabsTrigger>
+          <TabsTrigger value="billing" disabled>
+            <CreditCard className="mr-2 h-4 w-4 hidden sm:inline-block" />
+            Fatturazione
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="company">
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>Informazioni Azienda</CardTitle>
-              <CardDescription>Aggiorna i dettagli della tua attività.</CardDescription>
+              <CardDescription>
+                Aggiorna i dettagli della tua attività.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Form {...companyForm}>
-                <form onSubmit={companyForm.handleSubmit(onSubmitCompany)} className="space-y-6">
+                <form
+                  onSubmit={companyForm.handleSubmit(onSubmitCompany)}
+                  className="space-y-6"
+                >
                   <div className="flex items-center gap-4">
                     <Avatar className="h-20 w-20">
-                      <AvatarImage 
-                        src={companyLogoUrlValue || "https://placehold.co/100x100.png?text=Logo"} 
-                        alt={companyForm.getValues("nome")} 
+                      <AvatarImage
+                        src={
+                          companyLogoUrlValue ||
+                          'https://placehold.co/100x100.png?text=Logo'
+                        }
+                        alt={companyForm.getValues('nome')}
                         data-ai-hint="company logo"
                       />
-                      <AvatarFallback>{(companyForm.getValues("nome") || "L").substring(0,1).toUpperCase()}</AvatarFallback>
+                      <AvatarFallback>
+                        {(companyForm.getValues('nome') || 'L')
+                          .substring(0, 1)
+                          .toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
-                     <Button 
-                        variant="outline" 
-                        type="button" 
-                        disabled // Mantenuto disabilitato come da richiesta precedente
-                        onClick={() => {
-                          // Se la funzionalità di upload logo è stata rimandata:
-                          toast({title: "Info", description: "Funzionalità di caricamento logo (Prossimamente)."})
-                          // Altrimenti, se vuoi riattivarla ma l'utente ha scelto di non farlo:
-                          // logoFileInputRef.current?.click(); 
-                        }}
+                    <Button
+                      variant="outline"
+                      type="button"
+                      disabled // Mantenuto disabilitato come da richiesta precedente
+                      onClick={() => {
+                        // Se la funzionalità di upload logo è stata rimandata:
+                        toast({
+                          title: 'Info',
+                          description:
+                            'Funzionalità di caricamento logo (Prossimamente).',
+                        });
+                        // Altrimenti, se vuoi riattivarla ma l'utente ha scelto di non farlo:
+                        // logoFileInputRef.current?.click();
+                      }}
                     >
-                        {isUploadingLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        {isUploadingLogo ? "Caricamento..." : "Cambia Logo (Prossimamente)"}
+                      {isUploadingLogo ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : null}
+                      {isUploadingLogo
+                        ? 'Caricamento...'
+                        : 'Cambia Logo (Prossimamente)'}
                     </Button>
-                    <input 
-                        type="file" 
-                        ref={logoFileInputRef} 
-                        onChange={handleLogoFileChange} 
-                        className="hidden" 
-                        accept="image/png, image/jpeg, image/webp, image/gif" 
+                    <input
+                      type="file"
+                      ref={logoFileInputRef}
+                      onChange={handleLogoFileChange}
+                      className="hidden"
+                      accept="image/png, image/jpeg, image/webp, image/gif"
                     />
                   </div>
                   <Separator />
@@ -739,13 +1092,18 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Email Contatto Aziendale</FormLabel>
                           <FormControl>
-                            <Input type="email" {...field} disabled={isSavingCompany} placeholder="info@azienda.com"/>
+                            <Input
+                              type="email"
+                              {...field}
+                              disabled={isSavingCompany}
+                              placeholder="info@azienda.com"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                     <FormField
+                    <FormField
                       control={companyForm.control}
                       name="slug"
                       render={({ field }) => (
@@ -760,23 +1118,37 @@ export default function SettingsPage() {
                                 className="pl-10"
                                 disabled={isSavingCompany}
                                 onBlur={(e) => {
-                                    const manualSlug = generateSlug(e.target.value);
-                                    if (e.target.value.trim() === "" && companyNameValue) { 
-                                        field.onChange(generateSlug(companyNameValue));
-                                        companyForm.trigger("slug");
-                                    } else if (e.target.value.trim() !== "" && e.target.value !== manualSlug) {
-                                        field.onChange(manualSlug);
-                                        companyForm.trigger("slug");
-                                    }
-                                    setIsSlugManuallyEditedCompany(true);
-                                    field.onBlur();
+                                  const manualSlug = generateSlug(
+                                    e.target.value
+                                  );
+                                  if (
+                                    e.target.value.trim() === '' &&
+                                    companyNameValue
+                                  ) {
+                                    field.onChange(
+                                      generateSlug(companyNameValue)
+                                    );
+                                    companyForm.trigger('slug');
+                                  } else if (
+                                    e.target.value.trim() !== '' &&
+                                    e.target.value !== manualSlug
+                                  ) {
+                                    field.onChange(manualSlug);
+                                    companyForm.trigger('slug');
+                                  }
+                                  setIsSlugManuallyEditedCompany(true);
+                                  field.onBlur();
                                 }}
                                 onChange={(e) => {
-                                    field.onChange(e.target.value); 
-                                    if (!isSlugManuallyEditedCompany && e.target.value !== generateSlug(companyNameValue) ) {
-                                        setIsSlugManuallyEditedCompany(true);
-                                    }
-                                     companyForm.clearErrors('slug');
+                                  field.onChange(e.target.value);
+                                  if (
+                                    !isSlugManuallyEditedCompany &&
+                                    e.target.value !==
+                                      generateSlug(companyNameValue)
+                                  ) {
+                                    setIsSlugManuallyEditedCompany(true);
+                                  }
+                                  companyForm.clearErrors('slug');
                                 }}
                               />
                             </div>
@@ -784,7 +1156,8 @@ export default function SettingsPage() {
                           <FormDescription>
                             L'URL pubblico per ricevere richieste clienti sarà:
                             <code className="font-semibold text-primary text-xs break-all ml-1">
-                              /richiedi-intervento?azienda={generateSlug(companySlugValue) || "..."}
+                              /richiedi-intervento?azienda=
+                              {generateSlug(companySlugValue) || '...'}
                             </code>
                           </FormDescription>
                           <FormMessage />
@@ -798,7 +1171,11 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Telefono</FormLabel>
                           <FormControl>
-                            <Input type="tel" {...field} disabled={isSavingCompany} />
+                            <Input
+                              type="tel"
+                              {...field}
+                              disabled={isSavingCompany}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -811,15 +1188,25 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Indirizzo Completo</FormLabel>
                           <FormControl>
-                            <Input {...field} disabled={isSavingCompany} placeholder="Via Roma 1, 20121 Milano MI"/>
+                            <Input
+                              {...field}
+                              disabled={isSavingCompany}
+                              placeholder="Via Roma 1, 20121 Milano MI"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                   </div>
-                  <Button type="submit" disabled={isSavingCompany} className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                    {isSavingCompany && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <Button
+                    type="submit"
+                    disabled={isSavingCompany}
+                    className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                  >
+                    {isSavingCompany && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
                     Salva Modifiche Azienda
                   </Button>
                 </form>
@@ -833,17 +1220,37 @@ export default function SettingsPage() {
             <Card className="shadow-lg">
               <CardHeader>
                 <CardTitle>Profilo Utente Amministratore</CardTitle>
-                <CardDescription>Gestisci le informazioni del tuo account personale.</CardDescription>
+                <CardDescription>
+                  Gestisci le informazioni del tuo account personale.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Form {...profileForm}>
-                  <form onSubmit={profileForm.handleSubmit(onSubmitProfile)} className="space-y-6">
+                  <form
+                    onSubmit={profileForm.handleSubmit(onSubmitProfile)}
+                    className="space-y-6"
+                  >
                     <div className="flex items-center gap-4">
                       <Avatar className="h-20 w-20">
-                        <AvatarImage src={currentUser?.photoURL || "https://placehold.co/100x100.png"} alt={profileForm.getValues("displayName")} data-ai-hint="person avatar"/>
-                        <AvatarFallback>{(profileForm.getValues("displayName") || currentUser?.email?.substring(0,1) || "U").toUpperCase()}</AvatarFallback>
+                        <AvatarImage
+                          src={
+                            currentUser?.photoURL ||
+                            'https://placehold.co/100x100.png'
+                          }
+                          alt={profileForm.getValues('displayName')}
+                          data-ai-hint="person avatar"
+                        />
+                        <AvatarFallback>
+                          {(
+                            profileForm.getValues('displayName') ||
+                            currentUser?.email?.substring(0, 1) ||
+                            'U'
+                          ).toUpperCase()}
+                        </AvatarFallback>
                       </Avatar>
-                      <Button variant="outline" type="button" disabled>Cambia Foto Profilo (Prossimamente)</Button>
+                      <Button variant="outline" type="button" disabled>
+                        Cambia Foto Profilo (Prossimamente)
+                      </Button>
                     </div>
                     <Separator />
                     <FormField
@@ -851,12 +1258,20 @@ export default function SettingsPage() {
                       name="displayName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Nome Completo (Visibile Internamente)</FormLabel>
+                          <FormLabel>
+                            Nome Completo (Visibile Internamente)
+                          </FormLabel>
                           <FormControl>
-                             <div className="relative">
-                                <UserCircle className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input {...field} className="pl-10" disabled={isSavingProfile || !canEditAdminProfile} />
-                              </div>
+                            <div className="relative">
+                              <UserCircle className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <Input
+                                {...field}
+                                className="pl-10"
+                                disabled={
+                                  isSavingProfile || !canEditAdminProfile
+                                }
+                              />
+                            </div>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -868,43 +1283,68 @@ export default function SettingsPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Email (Login)</FormLabel>
-                           <FormControl>
-                             <div className="relative">
-                                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input type="email" className="pl-10" {...field} disabled={isSavingProfile || !canEditAdminProfile} />
-                              </div>
+                          <FormControl>
+                            <div className="relative">
+                              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <Input
+                                type="email"
+                                className="pl-10"
+                                {...field}
+                                disabled={
+                                  isSavingProfile || !canEditAdminProfile
+                                }
+                              />
+                            </div>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                     <FormField
+                    <FormField
                       control={profileForm.control}
                       name="newPassword"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Nuova Password (lascia vuoto per non modificare)</FormLabel>
-                           <FormControl>
-                             <div className="relative">
-                                <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input type="password" placeholder="••••••••" className="pl-10" {...field} disabled={isSavingProfile || !canEditAdminProfile} />
-                              </div>
+                          <FormLabel>
+                            Nuova Password (lascia vuoto per non modificare)
+                          </FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <Input
+                                type="password"
+                                placeholder="••••••••"
+                                className="pl-10"
+                                {...field}
+                                disabled={
+                                  isSavingProfile || !canEditAdminProfile
+                                }
+                              />
+                            </div>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                     <FormField
+                    <FormField
                       control={profileForm.control}
                       name="confirmNewPassword"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Conferma Nuova Password</FormLabel>
-                           <FormControl>
-                             <div className="relative">
-                                <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input type="password" placeholder="••••••••" className="pl-10" {...field} disabled={isSavingProfile || !canEditAdminProfile} />
-                              </div>
+                          <FormControl>
+                            <div className="relative">
+                              <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <Input
+                                type="password"
+                                placeholder="••••••••"
+                                className="pl-10"
+                                {...field}
+                                disabled={
+                                  isSavingProfile || !canEditAdminProfile
+                                }
+                              />
+                            </div>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -912,10 +1352,20 @@ export default function SettingsPage() {
                     />
                     <div>
                       <Label htmlFor="userRole">Ruolo Principale</Label>
-                      <Input id="userRole" value={"Amministratore Azienda"} disabled />
+                      <Input
+                        id="userRole"
+                        value={'Amministratore Azienda'}
+                        disabled
+                      />
                     </div>
-                    <Button type="submit" disabled={isSavingProfile || !canEditAdminProfile} className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                       {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    <Button
+                      type="submit"
+                      disabled={isSavingProfile || !canEditAdminProfile}
+                      className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                    >
+                      {isSavingProfile && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
                       Salva Modifiche Profilo
                     </Button>
                   </form>
@@ -926,11 +1376,16 @@ export default function SettingsPage() {
             <Card className="shadow-lg">
               <CardHeader>
                 <CardTitle>Aggiungi Nuovo Collaboratore</CardTitle>
-                <CardDescription>Inserisci i dettagli per un nuovo utente collaboratore.</CardDescription>
+                <CardDescription>
+                  Inserisci i dettagli per un nuovo utente collaboratore.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Form {...collaboratorForm}>
-                  <form onSubmit={collaboratorForm.handleSubmit(onAddCollaborator)} className="space-y-6">
+                  <form
+                    onSubmit={collaboratorForm.handleSubmit(onAddCollaborator)}
+                    className="space-y-6"
+                  >
                     <FormField
                       control={collaboratorForm.control}
                       name="nome_completo"
@@ -940,7 +1395,12 @@ export default function SettingsPage() {
                           <FormControl>
                             <div className="relative">
                               <UserCircle className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                              <Input placeholder="Mario Rossi" {...field} className="pl-10" disabled={isAddingCollaborator} />
+                              <Input
+                                placeholder="Mario Rossi"
+                                {...field}
+                                className="pl-10"
+                                disabled={isAddingCollaborator}
+                              />
                             </div>
                           </FormControl>
                           <FormMessage />
@@ -954,9 +1414,15 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Email Collaboratore</FormLabel>
                           <FormControl>
-                             <div className="relative">
+                            <div className="relative">
                               <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                              <Input type="email" placeholder="collaboratore@email.com" className="pl-10" {...field} disabled={isAddingCollaborator} />
+                              <Input
+                                type="email"
+                                placeholder="collaboratore@email.com"
+                                className="pl-10"
+                                {...field}
+                                disabled={isAddingCollaborator}
+                              />
                             </div>
                           </FormControl>
                           <FormMessage />
@@ -969,7 +1435,11 @@ export default function SettingsPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Ruolo</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value} disabled={isAddingCollaborator}>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                            disabled={isAddingCollaborator}
+                          >
                             <FormControl>
                               <div className="relative">
                                 <BriefcaseIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -979,8 +1449,10 @@ export default function SettingsPage() {
                               </div>
                             </FormControl>
                             <SelectContent>
-                              {RUOLI_COLLABORATORI.map(ruolo => (
-                                <SelectItem key={ruolo} value={ruolo}>{ruolo}</SelectItem>
+                              {RUOLI_COLLABORATORI.map((ruolo) => (
+                                <SelectItem key={ruolo} value={ruolo}>
+                                  {ruolo}
+                                </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
@@ -988,8 +1460,16 @@ export default function SettingsPage() {
                         </FormItem>
                       )}
                     />
-                    <Button type="submit" disabled={isAddingCollaborator} className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                      {isAddingCollaborator ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                    <Button
+                      type="submit"
+                      disabled={isAddingCollaborator}
+                      className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                    >
+                      {isAddingCollaborator ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                      )}
                       Aggiungi Collaboratore
                     </Button>
                   </form>
@@ -1001,32 +1481,56 @@ export default function SettingsPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>Collaboratori Registrati</CardTitle>
-              <CardDescription>Elenco dei collaboratori che possono gestire le richieste per la tua azienda.</CardDescription>
+              <CardDescription>
+                Elenco dei collaboratori che possono gestire le richieste per la
+                tua azienda.
+              </CardDescription>
             </CardHeader>
-            <CardContent>              
+            <CardContent>
               {isLoadingCollaborators ? (
                 <div className="flex items-center justify-center p-6">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className="ml-2 text-muted-foreground">Caricamento collaboratori...</p>
+                  <p className="ml-2 text-muted-foreground">
+                    Caricamento collaboratori...
+                  </p>
                 </div>
               ) : collaborators.length > 0 ? (
                 <ul className="space-y-3">
-                  {collaborators.map(collab => (
-                    <li key={collab.id} className="flex items-center justify-between p-3 border rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
+                  {collaborators.map((collab) => (
+                    <li
+                      key={collab.id}
+                      className="flex items-center justify-between p-3 border rounded-md bg-muted/30 hover:bg-muted/50 transition-colors"
+                    >
                       <div className="flex items-center gap-3">
-                         <Avatar className="h-9 w-9">
-                            <AvatarImage src={`https://placehold.co/40x40.png?text=${collab.nome_completo.substring(0,1).toUpperCase()}`} alt={collab.nome_completo} data-ai-hint="person letter"/>
-                            <AvatarFallback>{collab.nome_completo.substring(0,2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
+                        <Avatar className="h-9 w-9">
+                          <AvatarImage
+                            src={`https://placehold.co/40x40.png?text=${collab.nome_completo
+                              .substring(0, 1)
+                              .toUpperCase()}`}
+                            alt={collab.nome_completo}
+                            data-ai-hint="person letter"
+                          />
+                          <AvatarFallback>
+                            {collab.nome_completo.substring(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
                         <div>
                           <p className="font-medium">{collab.nome_completo}</p>
-                          <p className="text-xs text-muted-foreground">{collab.email}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {collab.email}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm bg-secondary text-secondary-foreground px-2 py-1 rounded-full">{collab.ruolo}</span>
-                        <Button variant="outline" size="sm" onClick={() => handleOpenCollaboratorSheet(collab)}>
-                           <Edit className="mr-1 h-3 w-3" /> Dettagli
+                        <span className="text-sm bg-secondary text-secondary-foreground px-2 py-1 rounded-full">
+                          {collab.ruolo}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenCollaboratorSheet(collab)}
+                        >
+                          <Edit className="mr-1 h-3 w-3" /> Dettagli
                         </Button>
                       </div>
                     </li>
@@ -1046,7 +1550,10 @@ export default function SettingsPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>Integrazioni</CardTitle>
-              <CardDescription>Collega Incastro con altri servizi per automatizzare il tuo lavoro.</CardDescription>
+              <CardDescription>
+                Collega Incastro con altri servizi per automatizzare il tuo
+                lavoro.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <Card>
@@ -1056,23 +1563,47 @@ export default function SettingsPage() {
                     Google Calendar
                   </CardTitle>
                   <CardDescription>
-                    Sincronizza automaticamente gli appuntamenti programmati in Incastro con il tuo Google Calendar.
+                    Sincronizza automaticamente gli appuntamenti programmati in
+                    Incastro con il tuo Google Calendar.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground mb-3">
+                  {/* <p className="text-sm text-muted-foreground mb-3">
                     Stato: Non collegato
+                  </p> */}
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Stato:{' '}
+                    {isGoogleConnected ? (
+                      <span className="text-green-600 font-medium">
+                        Collegato {googleEmail ? `(${googleEmail})` : ''}
+                      </span>
+                    ) : (
+                      <span className="text-red-500">Non collegato</span>
+                    )}
                   </p>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => {
-                      toast({ title: "Info", description: "Funzionalità di integrazione con Google Calendar (Prossimamente)." })
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      const result = await connectGoogleCalendar();
+                      if (result.success) {
+                        setIsGoogleConnected(true);
+                        setGoogleEmail(result.email || null);
+                        toast({
+                          title: 'Successo!',
+                          description: `Google Calendar collegato con ${result.email}`,
+                        });
+                      } else {
+                        toast({
+                          title: 'Errore Google Calendar',
+                          description: result.error || 'Collegamento fallito.',
+                          variant: 'destructive',
+                        });
+                      }
                     }}
                     className="border-blue-500 text-blue-500 hover:bg-blue-500/10"
-                    disabled // Lasciamo disabilitato finché non è pronta la logica OAuth
                   >
-                     <CalendarCheck2 className="mr-2 h-4 w-4" />
-                    Collega Google Calendar (Prossimamente)
+                    <CalendarCheck2 className="mr-2 h-4 w-4" />
+                    Collega Google Calendar
                   </Button>
                 </CardContent>
               </Card>
@@ -1085,12 +1616,17 @@ export default function SettingsPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>Impostazioni Notifiche</CardTitle>
-              <CardDescription>Scegli come e quando ricevere le notifiche.</CardDescription>
+              <CardDescription>
+                Scegli come e quando ricevere le notifiche.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-center h-48 flex flex-col justify-center items-center text-muted-foreground">
               <Bell className="h-12 w-12 mb-2" />
               <p>Funzionalità di notifica in arrivo.</p>
-              <p className="text-sm">Potrai personalizzare le preferenze per email e notifiche in-app.</p>
+              <p className="text-sm">
+                Potrai personalizzare le preferenze per email e notifiche
+                in-app.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1099,17 +1635,21 @@ export default function SettingsPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>Fatturazione e Abbonamento</CardTitle>
-              <CardDescription>Visualizza il tuo piano attuale e la cronologia di fatturazione.</CardDescription>
+              <CardDescription>
+                Visualizza il tuo piano attuale e la cronologia di fatturazione.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-center h-48 flex flex-col justify-center items-center text-muted-foreground">
               <CreditCard className="h-12 w-12 mb-2" />
               <p>Dettagli di fatturazione e gestione abbonamento in arrivo.</p>
-               <Button variant="outline" className="mt-4" type="button" disabled>Gestisci Abbonamento (Prossimamente)</Button>
+              <Button variant="outline" className="mt-4" type="button" disabled>
+                Gestisci Abbonamento (Prossimamente)
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-      
+
       {selectedCollaboratorForSheet && (
         <CollaboratorDetailsSheet
           isOpen={isCollaboratorSheetOpen}
@@ -1122,4 +1662,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
